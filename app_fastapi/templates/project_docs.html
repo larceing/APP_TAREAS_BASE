@@ -1,0 +1,107 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} · Documentos — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .project-content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  .docs-section { margin-bottom: 28px; }
+  .docs-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .docs-section-header h3 { font-size: 15px; font-weight: 700; }
+  .upload-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--ink); padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .upload-btn:hover { background: var(--border); }
+  .docs-grid { display: flex; flex-direction: column; gap: 8px; }
+  .doc-card { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+  .doc-icon  { font-size: 24px; flex-shrink: 0; }
+  .doc-info  { flex: 1; min-width: 0; }
+  .doc-name  { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc-meta  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .doc-actions { display: flex; gap: var(--gap-btn); flex-shrink: 0; }
+  .card-btn { background: var(--bg); border: 1px solid var(--border); color: var(--ink); padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .card-btn:hover { background: var(--border); }
+  .card-btn-red { color: var(--color-red); border-color: #fca5a5; }
+  .card-btn-red:hover { background: var(--color-red-tint); }
+  .task-docs-group  { margin-bottom: 16px; }
+  .task-docs-title  { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 8px; padding-left: 4px; display: flex; align-items: center; gap: 6px; }
+  .empty-state { color: var(--muted); font-size: 13px; padding: 12px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left"><h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1></div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="project-content">
+  <div class="docs-section">
+    <div class="docs-section-header">
+      <h3>Documentos del proyecto</h3>
+      <form method="post" action="/proyecto/{{ proyecto.id }}/doc/subir/" enctype="multipart/form-data">{{ csrf_field() }}
+        <label class="upload-btn">
+          📎 Subir archivo
+          <input type="file" name="file" onchange="this.form.submit()" style="display:none">
+        </label>
+      </form>
+    </div>
+
+    {% if proj_docs %}
+    <div class="docs-grid">
+      {% for doc in proj_docs %}
+      <div class="doc-card">
+        <div class="doc-icon">{{ doc.icon }}</div>
+        <div class="doc-info">
+          <div class="doc-name">{{ doc.nombre }}</div>
+          <div class="doc-meta">{{ doc.size_str }} · {{ doc.uploaded_at }} · {{ doc.uploaded_by }}</div>
+        </div>
+        <div class="doc-actions">
+          <a href="/doc/{{ doc.doc_id }}/descargar/" class="card-btn">⬇ Descargar</a>
+          <form method="post" action="/doc/{{ doc.doc_id }}/eliminar/" id="docDelForm-{{ doc.doc_id }}"
+                onsubmit="event.preventDefault(); showConfirm('¿Eliminar «{{ doc.nombre }}»?', function(){ document.getElementById('docDelForm-{{ doc.doc_id }}').submit(); }, {title:'Eliminar documento', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+            <button type="submit" class="card-btn card-btn-red">{{ icon("x", 14) }}</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">Sin documentos todavía.</p>
+    {% endif %}
+  </div>
+
+  {% if task_docs_grouped %}
+  <div class="docs-section">
+    <h3>Documentos por tarea</h3>
+    {% for tarea_id, docs in task_docs_grouped.items() %}
+    <div class="task-docs-group">
+      <div class="task-docs-title">{{ icon("layout", 13) }} {{ tarea_id }}</div>
+      <div class="docs-grid">
+        {% for doc in docs %}
+        <div class="doc-card">
+          <div class="doc-icon">{{ doc.icon }}</div>
+          <div class="doc-info">
+            <div class="doc-name">{{ doc.nombre }}</div>
+            <div class="doc-meta">{{ doc.size_str }} · {{ doc.uploaded_at }}</div>
+          </div>
+          <div class="doc-actions">
+            <a href="/doc/{{ doc.doc_id }}/descargar/" class="card-btn">⬇ Descargar</a>
+            <form method="post" action="/doc/{{ doc.doc_id }}/eliminar/" id="taskDocDelForm-{{ doc.doc_id }}"
+                  onsubmit="event.preventDefault(); showConfirm('¿Eliminar «{{ doc.nombre }}»?', function(){ document.getElementById('taskDocDelForm-{{ doc.doc_id }}').submit(); }, {title:'Eliminar documento', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+              <button type="submit" class="card-btn card-btn-red">{{ icon("x", 14) }}</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

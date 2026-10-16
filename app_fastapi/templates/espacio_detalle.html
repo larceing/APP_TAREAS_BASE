@@ -1,0 +1,313 @@
+{% extends "_base.html" %}
+{% block title %}{{ espacio.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Look tomado de otro proyecto propio (CS Manager) para esta pagina en
+     concreto -- hero con degradado + patron decorativo, tarjetas con icono
+     cuadrado, lista de miembros. .breadcrumb vive en static/css/main.css
+     (compartida con paginas de proyecto y calendario). */
+  .page { width: 100%; box-sizing: border-box; padding: 32px; }
+
+  .espacio-hero {
+    position: relative; overflow: hidden; border-radius: var(--radius);
+    margin-bottom: 22px; min-height: 132px;
+    background: linear-gradient(135deg, var(--hero-dark) 0%, var(--hero-color) 100%);
+    display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  .espacio-hero-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .espacio-hero-body { position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 14px; padding: 20px 22px; }
+  .espacio-hero-icon {
+    width: 46px; height: 46px; border-radius: var(--radius-sm); flex-shrink: 0;
+    background: rgba(255,255,255,.18); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; border: 1.5px solid rgba(255,255,255,.25);
+  }
+  .espacio-hero-name { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -.4px; line-height: 1.2; text-shadow: 0 1px 6px rgba(0,0,0,.25); display: flex; align-items: center; gap: 8px; }
+  .espacio-hero-badge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: rgba(255,255,255,.22); padding: 2px 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,.3); }
+  .espacio-hero-meta { font-size: 12.5px; color: rgba(255,255,255,.75); margin-top: 3px; text-shadow: 0 1px 4px rgba(0,0,0,.2); }
+
+  .section-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  .espacio-proyectos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .proyecto-card {
+    position: relative; display: flex; flex-direction: column; gap: 6px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; text-decoration: none; box-shadow: var(--shadow-sm);
+    border-top: 3px solid var(--proyecto-color); transition: box-shadow .15s, border-color .15s;
+  }
+  .proyecto-card:hover { box-shadow: var(--shadow-md); }
+  .proyecto-card-delete {
+    position: absolute; top: 8px; right: 8px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--muted); padding: 4px; opacity: 0; cursor: pointer;
+    transition: opacity .15s, color .15s, border-color .15s;
+  }
+  .proyecto-card:hover .proyecto-card-delete { opacity: 1; }
+  .proyecto-card-delete:hover { color: var(--color-red); border-color: #fca5a5; }
+  .proyecto-card-head { display: flex; align-items: center; gap: 8px; }
+  .proyecto-tipo-icon {
+    width: 26px; height: 26px; border-radius: var(--radius-sm); flex-shrink: 0;
+    background: color-mix(in srgb, var(--proyecto-color) 16%, var(--panel));
+    color: var(--proyecto-color); display: flex; align-items: center; justify-content: center;
+  }
+  .proyecto-card-name { font-size: 13.5px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proyecto-card-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+
+  .espacio-hero-actions { margin-left: auto; display: flex; align-items: center; }
+  .espacio-hero-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600;
+    text-decoration: none; border: none; cursor: pointer;
+    background: rgba(255,255,255,.92); color: var(--hero-color);
+    transition: background .14s;
+  }
+  .espacio-hero-btn:hover { background: #fff; }
+  .espacio-hero-actions { gap: 8px; }
+  .espacio-hero-btn-sec { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.35); }
+  .espacio-hero-btn-sec:hover { background: rgba(255,255,255,.28); }
+  .espacio-muro-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--color-red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-sizing: border-box; }
+
+  .miembros-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 28px; }
+  .miembro-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .miembro-row:last-child { border-bottom: none; }
+  .miembro-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--bg); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; flex-shrink: 0; }
+  .miembro-nombre { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; }
+  .miembro-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .miembro-rol-select { width: auto; border: none; border-radius: 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 3px 6px; cursor: pointer; }
+  .miembro-rol-admin { background: rgba(124,58,237,.15); color: var(--selected); }
+  .miembro-rol-editor { background: rgba(37,99,235,.15); color: #2563eb; }
+  .miembro-rol-lector { background: rgba(107,114,128,.18); color: var(--muted); }
+  .miembro-quitar-btn { background: none; border: none; color: var(--muted); cursor: pointer; display: inline-flex; padding: 3px; }
+  .miembro-quitar-btn:hover { color: var(--color-red); }
+  .miembro-add-form { display: flex; align-items: center; gap: 8px; padding: 12px 16px; flex-wrap: wrap; }
+  .miembro-add-form select { width: auto; padding: 6px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--ink); }
+  .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+  .espacio-empty { padding: 14px 4px; font-size: 12.5px; color: var(--muted); }
+
+  /* Panel de permisos de los Editores -- inspirado en el board_form.html de
+     CS Manager (otro proyecto propio), pero sin pestañas: aqui solo hay 5
+     interruptores en total. */
+  .permisos-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: 28px; }
+  .permiso-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .permiso-row:last-child { border-bottom: none; }
+  .permiso-info { flex: 1; }
+  .permiso-nombre { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .permiso-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .permiso-toggle { position: relative; width: 38px; height: 22px; flex-shrink: 0; cursor: pointer; }
+  .permiso-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .permiso-toggle-track { position: absolute; inset: 0; background: var(--border); border-radius: 12px; transition: background .15s; }
+  .permiso-toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); transition: transform .15s; }
+  .permiso-toggle input:checked + .permiso-toggle-track { background: var(--selected); }
+  .permiso-toggle input:checked + .permiso-toggle-track + .permiso-toggle-thumb { transform: translateX(16px); }
+  .permisos-footer { padding: 12px 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="breadcrumb"><a href="/espacios/">Espacios</a> › <span class="breadcrumb-current">{{ espacio.nombre }}</span></div>
+
+  <div class="espacio-hero" style="--hero-color:{{ espacio.color }};--hero-dark:{{ hero_dark }}">
+    <svg class="espacio-hero-svg" viewBox="0 0 1200 220" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {{ hero_svg | safe }}
+    </svg>
+    <div class="espacio-hero-body">
+      <div class="espacio-hero-icon">{{ icon("user" if espacio.es_personal else "users", 22) }}</div>
+      <div>
+        <div class="espacio-hero-name">
+          {{ espacio.nombre }}
+          {% if espacio.es_personal %}<span class="espacio-hero-badge">Personal</span>{% endif %}
+        </div>
+        <div class="espacio-hero-meta">{{ proyectos|length }} proyecto{{ 's' if proyectos|length != 1 }}{% if not espacio.es_personal %} · {{ miembros|length }} miembro{{ 's' if miembros|length != 1 }}{% endif %}</div>
+      </div>
+      {% if puede_editar or puede_ver_muro %}
+      <div class="espacio-hero-actions">
+        {% if puede_ver_muro %}
+        <a href="/muro/?espacio={{ espacio.id }}" class="espacio-hero-btn espacio-hero-btn-sec">
+          {{ icon("activity", 14) }} Muro{% if muro_sin_leer %}<span class="espacio-muro-badge">{{ muro_sin_leer }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if puede_editar %}
+        <button type="button" class="espacio-hero-btn" onclick="openSidebarProjectModal('new', null, null, null, null, null, '{{ espacio.id }}')">
+          {{ icon("plus", 14) }} Nuevo proyecto
+        </button>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="section-title">Proyectos</div>
+  <div class="espacio-proyectos">
+    {% for p in proyectos %}
+    <a class="proyecto-card" style="--proyecto-color:{{ p.color }}" href="/proyecto/{{ p.id }}/tablero/">
+      {% if puede_administrar and p.id != 'general' %}
+      <button type="button" class="proyecto-card-delete" title="Eliminar proyecto"
+              onclick="event.preventDefault(); event.stopPropagation(); abrirEliminarProyectoModal({{ p.id|tojson_seguro }}, {{ p.nombre|tojson_seguro }})">
+        {{ icon("trash-2", 13) }}
+      </button>
+      {% endif %}
+      <div class="proyecto-card-head">
+        <span class="proyecto-tipo-icon">{{ icon("layers" if p.tipo == "scrum" else "columns", 14) }}</span>
+        <span class="proyecto-card-name">{{ p.nombre }}</span>
+      </div>
+      <div class="proyecto-card-meta">
+        <span>{{ 'Scrum' if p.tipo == 'scrum' else 'Kanban' }}</span>
+        <span>{{ p.n_tareas }} tarea{{ 's' if p.n_tareas != 1 }}</span>
+      </div>
+    </a>
+    {% else %}
+    <div class="espacio-empty">Sin proyectos todavía.</div>
+    {% endfor %}
+  </div>
+
+  {% if not espacio.es_personal %}
+  <div class="section-title">Miembros ({{ miembros|length }})</div>
+  <div class="miembros-card">
+    {% for m in miembros %}
+    <div class="miembro-row">
+      <span class="miembro-avatar">{{ (m.username[0] if m.username else "?")|upper }}</span>
+      <span class="miembro-nombre">{{ m.nombre_completo }}</span>
+      <span class="miembro-actions">
+        {% if puede_administrar %}
+        <form method="post" action="/espacio/{{ espacio.id }}/miembro/{{ m.id }}/rol/" style="display:inline;">{{ csrf_field() }}
+          <select name="rol" class="miembro-rol-select miembro-rol-{{ m.rol }}" onchange="this.form.submit()">
+            <option value="admin" {% if m.rol == 'admin' %}selected{% endif %}>Administrador</option>
+            <option value="editor" {% if m.rol == 'editor' %}selected{% endif %}>Editor</option>
+            <option value="lector" {% if m.rol == 'lector' %}selected{% endif %}>Lector</option>
+          </select>
+        </form>
+        <form method="post" action="/espacio/{{ espacio.id }}/miembro/{{ m.id }}/quitar/" style="display:inline;">{{ csrf_field() }}
+          <button type="submit" class="miembro-quitar-btn" title="Quitar">{{ icon("x", 13) }}</button>
+        </form>
+        {% else %}
+        <span class="miembro-rol-select miembro-rol-{{ m.rol }}">{{ 'Administrador' if m.rol == 'admin' else m.rol|capitalize }}</span>
+        {% endif %}
+      </span>
+    </div>
+    {% else %}
+    <div class="espacio-empty">Sin miembros asignados.</div>
+    {% endfor %}
+    {% if puede_administrar %}
+    <form class="miembro-add-form" method="post" action="/espacio/{{ espacio.id }}/miembro/anadir/">{{ csrf_field() }}
+      <select name="user_id">
+        {% for u in usuarios %}<option value="{{ u.id }}">{{ u.nombre_completo }}</option>{% endfor %}
+      </select>
+      <select name="rol">
+        <option value="editor" selected>Editor</option>
+        <option value="lector">Lector</option>
+        <option value="admin">Administrador</option>
+      </select>
+      <button type="submit" class="btn-secondary btn-sm">+ Añadir miembro</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if puede_administrar %}
+  <div class="section-title">Permisos de los Editores</div>
+  <form method="post" action="/espacio/{{ espacio.id }}/permisos/">
+    {{ csrf_field() }}
+    <div class="permisos-card">
+      <div class="permiso-row">
+        <div class="permiso-info">
+          <div class="permiso-nombre">Mover tareas de otros</div>
+          <div class="permiso-desc">Un Editor puede mover/cerrar tareas que no están asignadas a él.</div>
+        </div>
+        <label class="permiso-toggle">
+          <input type="checkbox" name="editores_mueven_tareas_ajenas" {% if permisos.editores_mueven_tareas_ajenas %}checked{% endif %}>
+          <span class="permiso-toggle-track"></span><span class="permiso-toggle-thumb"></span>
+        </label>
+      </div>
+      <div class="permiso-row">
+        <div class="permiso-info">
+          <div class="permiso-nombre">Eliminar tareas de otros</div>
+          <div class="permiso-desc">Un Editor puede borrar tareas que no están asignadas a él.</div>
+        </div>
+        <label class="permiso-toggle">
+          <input type="checkbox" name="editores_eliminan_tareas_ajenas" {% if permisos.editores_eliminan_tareas_ajenas %}checked{% endif %}>
+          <span class="permiso-toggle-track"></span><span class="permiso-toggle-thumb"></span>
+        </label>
+      </div>
+      <div class="permiso-row">
+        <div class="permiso-info">
+          <div class="permiso-nombre">Gestionar columnas del tablero</div>
+          <div class="permiso-desc">Crear, mover o eliminar columnas del tablero.</div>
+        </div>
+        <label class="permiso-toggle">
+          <input type="checkbox" name="editores_gestionan_columnas" {% if permisos.editores_gestionan_columnas %}checked{% endif %}>
+          <span class="permiso-toggle-track"></span><span class="permiso-toggle-thumb"></span>
+        </label>
+      </div>
+      <div class="permiso-row">
+        <div class="permiso-info">
+          <div class="permiso-nombre">Editar apariencia</div>
+          <div class="permiso-desc">Renombrar columnas y cambiar su color.</div>
+        </div>
+        <label class="permiso-toggle">
+          <input type="checkbox" name="editores_editan_apariencia" {% if permisos.editores_editan_apariencia %}checked{% endif %}>
+          <span class="permiso-toggle-track"></span><span class="permiso-toggle-thumb"></span>
+        </label>
+      </div>
+      <div class="permiso-row">
+        <div class="permiso-info">
+          <div class="permiso-nombre">Gestionar documentos y Wiki</div>
+          <div class="permiso-desc">Subir/eliminar documentos y editar páginas de la Wiki.</div>
+        </div>
+        <label class="permiso-toggle">
+          <input type="checkbox" name="editores_gestionan_documentos_wiki" {% if permisos.editores_gestionan_documentos_wiki %}checked{% endif %}>
+          <span class="permiso-toggle-track"></span><span class="permiso-toggle-thumb"></span>
+        </label>
+      </div>
+      <div class="permisos-footer">
+        <button type="submit" class="btn-secondary btn-sm">Guardar permisos</button>
+      </div>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% if puede_administrar %}
+<!-- MODAL: eliminar proyecto -- doble confirmacion a proposito (click en
+     "Eliminar definitivamente" + escribir el nombre EXACTO del proyecto),
+     mas dura que el showConfirm() de un solo paso que usa el resto de la
+     app, porque borrar un proyecto es mucho mas dificil de deshacer que
+     quitar a alguien de un espacio. El servidor tambien revalida el nombre
+     (routers/proyectos.py::eliminar_proyecto_de_espacio), por si alguien
+     se salta este JS a mano. -->
+<div class="modal-overlay" id="eliminarProyectoModal">
+  <div class="modal modal-sm">
+    <div class="modal-body">
+      <h3 class="modal-title">Eliminar proyecto</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+        Esto borra <strong id="epm_nombre_display"></strong> de forma permanente. Sus tareas pasan al proyecto "general" (no se borran); columnas, hitos, sprints, documentos y Wiki propios de este proyecto se pierden.
+      </p>
+      <form method="post" id="eliminarProyectoForm">{{ csrf_field() }}
+        <div class="form-group">
+          <label>Escribe el nombre exacto del proyecto para confirmar</label>
+          <input type="text" name="confirmacion" id="epm_confirmacion" autocomplete="off" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeGlobalModal('eliminarProyectoModal')">Cancelar</button>
+          <button type="submit" class="btn-danger" id="epm_submitBtn" disabled>Eliminar definitivamente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+var EPM_NOMBRE_ESPERADO = '';
+function abrirEliminarProyectoModal(proyectoId, nombre) {
+  EPM_NOMBRE_ESPERADO = nombre;
+  document.getElementById('epm_nombre_display').textContent = nombre;
+  document.getElementById('eliminarProyectoForm').action = '/espacio/{{ espacio.id }}/proyecto/' + proyectoId + '/eliminar/';
+  document.getElementById('epm_confirmacion').value = '';
+  document.getElementById('epm_submitBtn').disabled = true;
+  document.getElementById('eliminarProyectoModal').classList.add('open');
+}
+document.getElementById('epm_confirmacion').addEventListener('input', function() {
+  document.getElementById('epm_submitBtn').disabled = this.value !== EPM_NOMBRE_ESPERADO;
+});
+</script>
+{% endif %}
+{% endblock %}

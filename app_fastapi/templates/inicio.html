@@ -1,0 +1,318 @@
+{% extends "_base.html" %}
+{% block title %}Inicio — {{ app_nombre() }}{% endblock %}
+
+{# Portada "mi dia" -- los datos los junta portada.py #}
+
+{% macro fila_tarea(t) %}
+<a class="po-tarea" href="/proyecto/{{ t.proyecto_id }}/tablero/?abrir_tarea={{ t.task_id }}">
+  <span class="po-tarea-dot" style="background:{{ t.proyecto_color }}"></span>
+  <span class="po-tarea-cuerpo">
+    <span class="po-tarea-titulo">{{ t.title }}</span>
+    <span class="po-tarea-meta">{{ t.proyecto_nombre }}{% if t.priority == 'Alta' %} · <span class="po-alta">alta</span>{% endif %}</span>
+  </span>
+  {% if t.cuando %}<span class="po-chip po-t-{{ t.tono or 'normal' }}">{{ t.cuando }}</span>{% endif %}
+</a>
+{% endmacro %}
+
+{% macro avatar(nombre, uid) %}{% set partes = (nombre or '?').replace('_', ' ').split() %}<span class="po-avatar" style="background:hsl({{ ((uid or 0) * 67) % 360 }},55%,46%)">{{ (partes[0][0] ~ (partes[1][0] if partes|length > 1 else ''))|upper }}</span>{% endmacro %}
+
+{% block extra_head %}
+<style>
+  .po-page { width: 100%; box-sizing: border-box; padding: 26px 32px 40px; max-width: 1240px; margin: 0 auto; }
+  .po-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .po-head h1 { font-size: 24px; margin: 0; letter-spacing: -.01em; }
+  .po-head p { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); }
+  .po-head-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  .po-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: 1px solid var(--border); background: var(--panel); color: var(--ink); }
+  .po-btn:hover { background: var(--bg); }
+  .po-btn-prim { background: var(--color-blue); border-color: var(--color-blue); color: #fff; }
+  .po-btn-prim:hover { filter: brightness(1.08); background: var(--color-blue); }
+
+  /* franja de hoy */
+  .po-hoy { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .po-kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .po-kpi-n { font-size: 24px; font-weight: 800; line-height: 1.1; }
+  .po-kpi-l { font-size: 12px; color: var(--muted); }
+  .po-kpi-sub { font-size: 12px; color: var(--ink); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .po-kpi-sub b { color: var(--color-blue); }
+  .po-kpi.po-rojo .po-kpi-n { color: var(--color-red); }
+  .po-kpi.po-naranja .po-kpi-n { color: var(--color-orange, #ea580c); }
+  a.po-kpi:hover { border-color: color-mix(in srgb, var(--color-blue) 40%, var(--border)); }
+
+  .po-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+  .po-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .po-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden; }
+  .po-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .po-card-head h2 { font-size: 14px; margin: 0; display: flex; align-items: center; gap: 7px; }
+  .po-card-head h2 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .po-ver { font-size: 12px; font-weight: 700; color: var(--color-blue); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .po-vacio { padding: 18px 16px; font-size: 13px; color: var(--muted); }
+  .po-vacio a { color: var(--color-blue); font-weight: 600; }
+
+  /* pestañas de mi trabajo */
+  .po-tabs { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  .po-tabs button { border: none; background: none; padding: 4px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .po-tabs button.activa { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-sm); }
+  .po-tabs .po-n { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 8px; background: var(--border); color: var(--ink); }
+  .po-tabs .po-n.rojo { background: #fee2e2; color: #b91c1c; }
+  .po-panel[hidden] { display: none; }
+
+  .po-tarea { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); color: var(--ink); }
+  .po-tarea:last-child { border-bottom: none; }
+  .po-tarea:hover { background: color-mix(in srgb, var(--bg) 70%, var(--panel)); }
+  .po-tarea-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .po-tarea-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .po-tarea-titulo { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .po-tarea-meta { font-size: 11.5px; color: var(--muted); }
+  .po-alta { color: #c2410c; font-weight: 700; }
+  .po-chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 9px; white-space: nowrap; flex-shrink: 0; background: var(--bg); color: var(--muted); }
+  .po-t-vencida { background: #fee2e2; color: #b91c1c; }
+  .po-t-hoy { background: #ffedd5; color: #9a3412; }
+  .po-t-pronto { background: #fef3c7; color: #92400e; }
+  .po-mas { display: block; padding: 8px 16px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
+
+  /* actividad de muros */
+  .po-act { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 13px; align-items: flex-start; }
+  .po-act:last-child { border-bottom: none; }
+  .po-avatar { width: 26px; height: 26px; border-radius: 50%; color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .po-act-sis { width: 26px; height: 26px; border-radius: 50%; background: var(--bg); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .po-act-aviso { background: #fef3c7; color: #b45309; }
+  .po-act-cuerpo { flex: 1; min-width: 0; line-height: 1.45; }
+  .po-act-texto { color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .po-act.sistema .po-act-texto { color: var(--muted); }
+  .po-act-meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+  .po-etq { font-size: 10.5px; font-weight: 700; padding: 0 7px; border-radius: 8px; color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); white-space: nowrap; }
+
+  /* lateral */
+  .po-item { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--ink); align-items: flex-start; }
+  .po-item:last-child { border-bottom: none; }
+  a.po-item:hover { background: color-mix(in srgb, var(--bg) 70%, var(--panel)); }
+  .po-item-cuerpo { flex: 1; min-width: 0; line-height: 1.4; }
+  .po-item-texto { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .po-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .po-sub { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 16px 4px; }
+  .po-reunion { display: flex; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; align-items: center; color: var(--ink); }
+  .po-reunion:last-child { border-bottom: none; }
+  .po-reunion-hora { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--color-blue); width: 40px; flex-shrink: 0; }
+  .po-reunion-titulo { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .po-teams { font-size: 11px; font-weight: 700; color: #4f46e5; flex-shrink: 0; }
+  .po-serv { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--border); align-items: flex-start; color: var(--ink); font-size: 12.5px; }
+  .po-serv:last-child { border-bottom: none; }
+  .po-serv:hover { background: color-mix(in srgb, var(--bg) 70%, var(--panel)); }
+  .po-estado { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
+  .po-estado.off { background: #94a3b8; box-shadow: 0 0 0 3px #e2e8f0; }
+
+  /* proyectos por espacio */
+  .po-espacio { margin-top: 26px; }
+  .po-espacio-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .po-espacio-head h3 { font-size: 13px; margin: 0; }
+  .po-espacio-head a { color: inherit; }
+  .po-espacio-color { width: 10px; height: 10px; border-radius: 3px; }
+  .po-espacio-head .po-ver { margin-left: auto; }
+  .po-proys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .po-proy { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-sm); color: var(--ink); border-left: 4px solid var(--c); }
+  .po-proy:hover { border-color: color-mix(in srgb, var(--c) 50%, var(--border)); border-left-color: var(--c); }
+  .po-proy-nombre { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .po-proy-n { font-size: 11.5px; color: var(--muted); white-space: nowrap; text-align: right; line-height: 1.3; }
+  .po-proy-n b { color: var(--ink); }
+  .po-proy-n .rojo { color: #b91c1c; font-weight: 700; }
+
+  @media (max-width: 1000px) {
+    .po-grid { grid-template-columns: 1fr; }
+    .po-hoy { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .po-page { padding: 18px 16px 30px; }
+    .po-hoy { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="po-page">
+  <div class="po-head">
+    <div>
+      <h1>{{ saludo }}, {{ nombre }}</h1>
+      <p>{{ fecha_larga }}</p>
+    </div>
+    <div class="po-head-acciones">
+      <a class="po-btn" href="/agenda/{{ hoy }}/">{{ icon("calendar", 13) }} Agenda de hoy</a>
+      <a class="po-btn" href="/muro/">{{ icon("message-circle", 13) }} Muro</a>
+      <a class="po-btn po-btn-prim" href="/buzon/">{{ icon("inbox", 13) }} Buzón</a>
+    </div>
+  </div>
+
+  <!-- franja de hoy -->
+  <div class="po-hoy">
+    <a class="po-kpi" href="/agenda/{{ hoy }}/">
+      <span class="po-kpi-n">{{ reuniones|length }}</span>
+      <span class="po-kpi-l">{{ 'reunión' if reuniones|length == 1 else 'reuniones' }} hoy</span>
+      {% if reuniones %}<span class="po-kpi-sub">Próxima: <b>{{ reuniones[0].hora }}</b> {{ reuniones[0].titulo }}</span>{% endif %}
+    </a>
+    <a class="po-kpi" href="/agenda/{{ hoy }}/">
+      <span class="po-kpi-n">{{ tareas_hoy|length }}</span>
+      <span class="po-kpi-l">{{ 'tarea vence' if tareas_hoy|length == 1 else 'tareas vencen' }} hoy</span>
+      {% if tareas_hoy %}<span class="po-kpi-sub">{{ tareas_hoy[0].title }}</span>{% endif %}
+    </a>
+    <a class="po-kpi po-rojo" href="/kanban/">
+      <span class="po-kpi-n">{{ total_vencidas }}</span>
+      <span class="po-kpi-l">vencidas</span>
+      <span class="po-kpi-sub">de {{ total_pendientes }} pendientes</span>
+    </a>
+    <a class="po-kpi po-naranja" href="/kanban/">
+      <span class="po-kpi-n">{{ total_alta }}</span>
+      <span class="po-kpi-l">prioridad alta</span>
+      <span class="po-kpi-sub">sin contar las vencidas</span>
+    </a>
+  </div>
+
+  <div class="po-grid">
+    <!-- columna principal -->
+    <div class="po-col">
+      <section class="po-card">
+        <div class="po-card-head">
+          <h2>{{ icon("check-circle", 15) }} Mi trabajo</h2>
+          <div class="po-tabs" role="tablist">
+            <button type="button" data-panel="mias" {% if total_mias %}class="activa"{% endif %}>Asignadas a mí <span class="po-n">{{ total_mias }}</span></button>
+            <button type="button" data-panel="vencidas" {% if not total_mias %}class="activa"{% endif %}>Vencidas <span class="po-n rojo">{{ total_vencidas }}</span></button>
+            <button type="button" data-panel="alta">Prioridad alta <span class="po-n">{{ total_alta }}</span></button>
+          </div>
+        </div>
+        <div class="po-panel" data-panel="mias" {% if not total_mias %}hidden{% endif %}>
+          {% for t in mias %}{{ fila_tarea(t) }}{% else %}<p class="po-vacio">No tienes tareas asignadas pendientes.</p>{% endfor %}
+          {% if total_mias > mias|length %}<span class="po-mas">y {{ total_mias - mias|length }} más</span>{% endif %}
+        </div>
+        <div class="po-panel" data-panel="vencidas" {% if total_mias %}hidden{% endif %}>
+          {% for t in vencidas %}{{ fila_tarea(t) }}{% else %}<p class="po-vacio">Nada vencido. 👌</p>{% endfor %}
+          {% if total_vencidas > vencidas|length %}<span class="po-mas">y {{ total_vencidas - vencidas|length }} más</span>{% endif %}
+        </div>
+        <div class="po-panel" data-panel="alta" hidden>
+          {% for t in alta %}{{ fila_tarea(t) }}{% else %}<p class="po-vacio">Sin tareas de prioridad alta pendientes.</p>{% endfor %}
+          {% if total_alta > alta|length %}<span class="po-mas">y {{ total_alta - alta|length }} más</span>{% endif %}
+        </div>
+      </section>
+
+      <section class="po-card">
+        <div class="po-card-head">
+          <h2>{{ icon("message-circle", 15) }} Actividad en mis muros</h2>
+          <a class="po-ver" href="/muro/">Ir al muro {{ icon("arrow-right", 12) }}</a>
+        </div>
+        {% for a in actividad %}
+        <a class="po-act {% if a.es_sistema %}sistema{% endif %}" href="/muro/?espacio={{ a.espacio_id }}{% if a.proyecto_id %}&proyecto={{ a.proyecto_id }}{% endif %}">
+          {% if a.es_aviso %}<span class="po-act-sis po-act-aviso">{{ icon("bell", 13) }}</span>
+          {% elif a.es_sistema %}<span class="po-act-sis">{{ icon("activity", 13) }}</span>
+          {% else %}{{ avatar(a.autor, a.user_id) }}{% endif %}
+          <span class="po-act-cuerpo">
+            <span class="po-act-texto">{% if not a.es_sistema and not a.es_aviso %}<b>{{ a.autor }}:</b> {% endif %}{{ a.contenido }}</span>
+            <span class="po-act-meta">
+              {% if a.proyecto %}<span class="po-etq" style="--c:{{ a.proyecto_color or a.espacio_color }}">{{ a.proyecto }}</span>{% endif %}
+              <span>{{ a.espacio }} · {{ a.hace }}</span>
+            </span>
+          </span>
+        </a>
+        {% else %}
+        <p class="po-vacio">{% if hay_muros %}Todavía no ha pasado nada en tus muros. Aquí verás las tareas que se crean, se asignan o se completan en tus espacios, y lo que se escribe en ellos.{% else %}No eres miembro de ningún espacio con muro todavía.{% endif %}</p>
+        {% endfor %}
+      </section>
+    </div>
+
+    <!-- lateral -->
+    <aside class="po-col">
+      {% if reuniones %}
+      <section class="po-card">
+        <div class="po-card-head"><h2>{{ icon("calendar", 15) }} Reuniones de hoy</h2><a class="po-ver" href="/agenda/{{ hoy }}/">Agenda {{ icon("arrow-right", 12) }}</a></div>
+        {% for r in reuniones %}
+        <a class="po-reunion" href="/reunion/{{ r.reunion_id }}/">
+          <span class="po-reunion-hora">{{ r.hora or '—' }}</span>
+          <span class="po-reunion-titulo" title="{{ r.titulo }}">{{ r.titulo }}</span>
+          {% if r.enlace_teams %}<span class="po-teams">Teams</span>{% endif %}
+        </a>
+        {% endfor %}
+      </section>
+      {% endif %}
+
+      <section class="po-card">
+        <div class="po-card-head"><h2>{{ icon("inbox", 15) }} Buzón</h2><a class="po-ver" href="/buzon/">Abrir {{ icon("arrow-right", 12) }}</a></div>
+        {% if buzon_nuevas %}<div class="po-sub">Sin leer</div>{% endif %}
+        {% for n in buzon_nuevas %}
+        <a class="po-item" href="/buzon/#nota-{{ n.id }}">
+          {{ avatar(n.de_nombre, n.de_user_id) }}
+          <span class="po-item-cuerpo"><span class="po-item-texto"><b>{{ n.de_nombre }}:</b> {{ n.contenido }}</span></span>
+        </a>
+        {% endfor %}
+        {% if buzon_vencen %}<div class="po-sub">Vencen pronto</div>{% endif %}
+        {% for n in buzon_vencen %}
+        <a class="po-item" href="/buzon/#nota-{{ n.id }}">
+          <span class="po-act-sis">{{ icon("clock", 13) }}</span>
+          <span class="po-item-cuerpo"><span class="po-item-texto">{{ n.contenido }}</span><span class="po-item-meta"><span class="po-chip po-t-{{ n.tono or 'normal' }}">{{ n.cuando }}</span></span></span>
+        </a>
+        {% endfor %}
+        {% if not buzon_nuevas and not buzon_vencen %}<p class="po-vacio">Nada pendiente en el Buzón.</p>{% endif %}
+      </section>
+
+      <section class="po-card">
+        <div class="po-card-head"><h2>{{ icon("bell", 15) }} Novedades</h2><a class="po-ver" href="/notificaciones/">Ver todas {{ icon("arrow-right", 12) }}</a></div>
+        {% for n in novedades %}
+        <a class="po-item" href="{{ n.url or '/notificaciones/' }}">
+          <span class="po-item-cuerpo"><span class="po-item-texto">{{ n.texto }}</span><span class="po-item-meta">{{ n.hace }}</span></span>
+        </a>
+        {% else %}
+        <p class="po-vacio">Estás al día: ningún aviso sin leer.</p>
+        {% endfor %}
+      </section>
+
+      {% if servicios %}
+      <section class="po-card">
+        <div class="po-card-head"><h2>{{ icon("zap", 15) }} Avisos de escritorio</h2></div>
+        {% for s in servicios %}
+        <a class="po-serv" href="{{ s.url }}" title="Configurar">
+          <span class="po-estado {% if not s.activo %}off{% endif %}"></span>
+          <span class="po-item-cuerpo">
+            <b>{{ s.titulo }}</b>{% if not s.activo %} <span style="color:var(--muted)">· pausado</span>{% endif %}
+            <span class="po-item-meta" style="display:block">{% if s.ultima %}{{ s.ultima[11:] if s.ultima[:10] == hoy[8:10] ~ '/' ~ hoy[5:7] ~ '/' ~ hoy[0:4] else s.ultima }} · {% endif %}{{ s.resultado or 'sin actividad todavía' }}</span>
+          </span>
+        </a>
+        {% endfor %}
+      </section>
+      {% endif %}
+    </aside>
+  </div>
+
+  <!-- proyectos por espacio -->
+  {% for g in grupos %}
+  <div class="po-espacio">
+    <div class="po-espacio-head">
+      <span class="po-espacio-color" style="background:{{ g.color }}"></span>
+      <h3>{% if g.id %}<a href="/espacio/{{ g.id }}/">{{ g.nombre }}</a>{% else %}{{ g.nombre }}{% endif %}</h3>
+      {% if g.id %}<a class="po-ver" href="/muro/?espacio={{ g.id }}">Muro{% if g.sin_leer %} · {{ g.sin_leer }} sin leer{% endif %} {{ icon("arrow-right", 12) }}</a>{% endif %}
+    </div>
+    <div class="po-proys">
+      {% for p in g.proyectos %}
+      <a class="po-proy" href="/proyecto/{{ p.id }}/tablero/" style="--c:{{ p.color }}" title="{{ p.nombre }}">
+        <span class="po-proy-nombre">{{ p.nombre }}</span>
+        <span class="po-proy-n"><b>{{ p.pendientes }}</b> pendientes{% if p.vencidas %}<br><span class="rojo">{{ p.vencidas }} vencida{{ 's' if p.vencidas != 1 }}</span>{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+// pestañas de "Mi trabajo" (la elegida se recuerda en este navegador)
+(function () {
+  var botones = document.querySelectorAll('.po-tabs button');
+  function mostrar(nombre) {
+    botones.forEach(function (b) { b.classList.toggle('activa', b.dataset.panel === nombre); });
+    document.querySelectorAll('.po-panel').forEach(function (p) { p.hidden = p.dataset.panel !== nombre; });
+  }
+  botones.forEach(function (b) {
+    b.addEventListener('click', function () {
+      mostrar(b.dataset.panel);
+      try { localStorage.setItem('portadaPestana', b.dataset.panel); } catch (e) {}
+    });
+  });
+  try { var g = localStorage.getItem('portadaPestana'); if (g && document.querySelector('.po-panel[data-panel="' + g + '"]')) mostrar(g); } catch (e) {}
+})();
+</script>
+{% endblock %}

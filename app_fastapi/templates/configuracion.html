@@ -1,0 +1,1357 @@
+{% extends "_base.html" %}
+{% block title %}Configuración — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .config-page { display: flex; min-height: calc(100vh - 82px); }
+  .config-nav { width: 210px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); padding: 20px 10px; }
+  .config-nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 0 10px 10px; }
+  .config-nav-label-group { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .config-nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--radius-sm); font-size: 13px; color: var(--ink); transition: background .12s; }
+  .config-nav-item svg { opacity: .7; }
+  .config-nav-item-label { flex: 1; }
+  a.config-nav-item:hover { background: var(--bg); }
+  .config-nav-item.active { background: rgba(124,58,237,.1); color: var(--selected); font-weight: 600; }
+  .config-nav-item.active svg { opacity: 1; }
+  .config-nav-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .config-nav-item.active .config-nav-count { color: var(--selected); }
+
+  .config-panel { flex: 1; overflow-y: auto; padding: 30px 34px; max-width: 820px; margin: 0 auto; width: 100%; }
+  .config-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+  .config-panel-head h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -.01em; }
+  .config-panel-head p { margin: 0; color: var(--muted); font-size: 13px; }
+  .config-subsection {
+    margin-top: 16px; padding: 16px 18px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+  }
+  .config-subsection > label { display: block; font-weight: 600; margin-bottom: 4px; }
+  .config-subsection > p { font-size: 12px; color: var(--muted); margin: 0 0 12px; max-width: 560px; line-height: 1.5; }
+  .btn-icon { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 2px 4px; transition: color .15s; }
+  .btn-icon:hover { color: var(--ink); }
+
+  /* interruptor on/off (Mantis -> Vigilante) -- pedido explicito del usuario
+     de mejorar la maquetacion de Configuracion inspirandose en patrones
+     modernos de settings; Django no tiene equivalente visual, ahi es un
+     texto+boton (ver mantis_watcher_toggle en core/templates/configuracion.html) */
+  .toggle-switch-row { display: flex; align-items: center; gap: 10px; }
+  .toggle-switch { position: relative; width: 38px; height: 21px; border-radius: 11px; border: none; cursor: pointer; background: #d1d5db; padding: 0; flex-shrink: 0; transition: background .15s; }
+  .toggle-switch.on { background: var(--color-green, #16a34a); }
+  .toggle-switch-knob { position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); transition: left .15s; }
+  .toggle-switch.on .toggle-switch-knob { left: 19px; }
+  .toggle-switch-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .config-callout {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: color-mix(in srgb, var(--selected) 8%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--selected) 25%, var(--border));
+    border-radius: var(--radius); padding: 10px 14px;
+    font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 16px;
+  }
+  .config-callout svg { flex-shrink: 0; margin-top: 2px; color: var(--selected); }
+  .config-callout a, .config-callout .config-callout-link { color: var(--selected); font-weight: 600; cursor: pointer; text-decoration: underline; }
+  .config-table { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: var(--shadow-sm); }
+  .config-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .config-row:last-child { border-bottom: none; }
+  .config-row:hover { background: var(--bg); }
+  .config-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .config-name { font-size: 14px; font-weight: 600; }
+  .config-meta { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 1px 8px; border-radius: 9px; }
+  .config-actions { margin-left: auto; display: flex; gap: 12px; color: var(--muted); font-size: 14px; align-items: center; flex-shrink: 0; }
+  .config-actions span { cursor: pointer; }
+  .config-actions span:hover { color: var(--ink); }
+  .config-actions form { display: inline; }
+  .config-actions form button { background: none; border: none; color: inherit; font-size: 14px; cursor: pointer; padding: 0; }
+  .config-actions form button:hover { color: var(--ink); }
+  .config-empty { padding: 20px; color: var(--muted); font-size: 13px; text-align: center; }
+
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+  input[type=text], input[type=number], input[type=date], input[type=url], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 90vw; overflow: hidden; max-height: 88vh; display: flex; flex-direction: column; }
+  .modal-stripe { height: 6px; flex-shrink: 0; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-row { display: flex; gap: 10px; }
+  .form-row .form-group { flex: 1; }
+  .form-check { display: flex; align-items: center; gap: 6px; }
+  .form-check input { width: auto; }
+  .form-check label { margin: 0; text-transform: none; font-weight: 400; font-size: 13px; }
+  .color-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .color-swatch input { display: none; }
+  .color-swatch span { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+  .color-swatch input:checked + span { border-color: var(--ink); transform: scale(1.15); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .config-form-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; max-width: 380px; box-shadow: var(--shadow-sm); }
+  .texto-row { align-items: flex-start; }
+  .texto-clave { font-size: 12.5px; font-weight: 600; }
+  .texto-valor { font-size: 12.5px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .texto-filters { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+  .texto-filters input[type="text"] { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 13px; }
+  .texto-filters select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 13px; }
+  .texto-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .texto-table { max-height: 60vh; overflow-y: auto; }
+  .texto-categoria-chip { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--bg); border: 1px solid var(--border); padding: 2px 7px; border-radius: 9px; flex-shrink: 0; width: 90px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* avisos de escritorio (Recordatorio / Vigilante de Mantis) */
+  .esc-estado { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .esc-estado-res { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 1px 9px; }
+  .esc-dias { display: flex; gap: 4px; }
+  .esc-dia input { display: none; }
+  .esc-dia span { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; }
+  .esc-dia input:checked + span { background: var(--color-blue); border-color: var(--color-blue); color: #fff; }
+  .esc-icono { width: 40px; height: 40px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .esc-icono-vacio { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: 9.5px; font-weight: 600; line-height: 1.1; text-align: center; padding: 2px; box-sizing: border-box; }
+  .esc-icono-row { display: flex; gap: 12px; align-items: center; }
+  .esc-icono-form { display: flex; gap: 8px; align-items: center; flex: 1; flex-wrap: wrap; }
+  .esc-icono-form input[type=file] { font-size: 12px; max-width: 210px; }
+  .esc-icono-form select { width: auto; max-width: 210px; }
+  .esc-nuevo textarea, .rec-edit textarea { margin-bottom: 8px; }
+  .rec-texto { font-size: 13px; }
+  input[type=time] { font-family: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--panel); color: var(--ink); width: 100%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="config-page">
+  <nav class="config-nav">
+    <div class="config-nav-label">Tareas</div>
+    <a class="config-nav-item {% if tab_activo == 'categorias' %}active{% endif %}" href="/configuracion/?tipo=categorias">{{ icon("list", 15) }}<span class="config-nav-item-label">{{ titulos_tab.categorias }}</span> <span class="config-nav-count">{{ conteos.categorias }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'empresas' %}active{% endif %}" href="/configuracion/?tipo=empresas">{{ icon("briefcase", 15) }}<span class="config-nav-item-label">Empresas</span> <span class="config-nav-count">{{ empresas|length }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'sistemas' %}active{% endif %}" href="/configuracion/?tipo=sistemas">{{ icon("server", 15) }}<span class="config-nav-item-label">{{ titulos_tab.sistemas }}</span> <span class="config-nav-count">{{ conteos.sistemas }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'iniciativas' %}active{% endif %}" href="/configuracion/?tipo=iniciativas">{{ icon("flag", 15) }}<span class="config-nav-item-label">{{ titulos_tab.iniciativas }}</span> <span class="config-nav-count">{{ conteos.iniciativas }}</span></a>
+
+    <div class="config-nav-label config-nav-label-group">Calendario</div>
+    <a class="config-nav-item {% if tab_activo == 'dias_especiales' %}active{% endif %}" href="/configuracion/?tipo=dias_especiales">{{ icon("calendar", 15) }}<span class="config-nav-item-label">{{ titulos_tab.dias_especiales }}</span> <span class="config-nav-count">{{ conteos.dias_especiales }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'tipos_dia_especial' %}active{% endif %}" href="/configuracion/?tipo=tipos_dia_especial">{{ icon("layers", 15) }}<span class="config-nav-item-label">{{ titulos_tab.tipos_dia_especial }}</span> <span class="config-nav-count">{{ conteos.tipos_dia_especial }}</span></a>
+
+    <div class="config-nav-label config-nav-label-group">Interfaz</div>
+    <a class="config-nav-item {% if tab_activo == 'textos' %}active{% endif %}" href="/configuracion/?tipo=textos">{{ icon("file-text", 15) }}<span class="config-nav-item-label">{{ titulos_tab.textos }}</span> <span class="config-nav-count">{{ conteos.textos }}</span></a>
+
+    <div class="config-nav-label config-nav-label-group">Sistema</div>
+    {% if modulo_activo('mantis') %}<a class="config-nav-item {% if tab_activo == 'mantis' %}active{% endif %}" href="/configuracion/?tipo=mantis">{{ icon("activity", 15) }}<span class="config-nav-item-label">{{ titulos_tab.mantis }}</span></a>{% endif %}
+    <a class="config-nav-item {% if tab_activo == 'sistema' %}active{% endif %}" href="/configuracion/?tipo=sistema">{{ icon("hard-drive", 15) }}<span class="config-nav-item-label">{{ titulos_tab.sistema }}</span> <span class="config-nav-count">{{ conteos.sistema }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'api' %}active{% endif %}" href="/configuracion/?tipo=api">{{ icon("key", 15) }}<span class="config-nav-item-label">{{ titulos_tab.api }}</span> <span class="config-nav-count">{{ conteos.api }}</span></a>
+    <a class="config-nav-item {% if tab_activo == 'calendario_sync' %}active{% endif %}" href="/configuracion/?tipo=calendario_sync">{{ icon("rss", 15) }}<span class="config-nav-item-label">{{ titulos_tab.calendario_sync }}</span></a>
+    {% if modulo_activo('conectores') %}<a class="config-nav-item {% if tab_activo == 'conectores' %}active{% endif %}" href="/configuracion/?tipo=conectores">{{ icon("download", 15) }}<span class="config-nav-item-label">{{ titulos_tab.conectores }}</span></a>{% endif %}
+    {% if modulo_activo('nexus') %}<a class="config-nav-item {% if tab_activo == 'nexus' %}active{% endif %}" href="/configuracion/?tipo=nexus">{{ icon("search", 15) }}<span class="config-nav-item-label">{{ titulos_tab.nexus }}</span></a>{% endif %}
+
+    {% if modulo_activo('escritorio') %}
+    <div class="config-nav-label config-nav-label-group">Avisos de escritorio</div>
+    <a class="config-nav-item {% if tab_activo == 'recordatorio' %}active{% endif %}" href="/configuracion/?tipo=recordatorio">{{ icon("clock", 15) }}<span class="config-nav-item-label">{{ titulos_tab.recordatorio }}</span></a>
+    {% if modulo_activo('mantis') %}<a class="config-nav-item {% if tab_activo == 'vigilante' %}active{% endif %}" href="/configuracion/?tipo=vigilante">{{ icon("zap", 15) }}<span class="config-nav-item-label">{{ titulos_tab.vigilante }}</span></a>{% endif %}
+    <a class="config-nav-item {% if tab_activo == 'vigia' %}active{% endif %}" href="/configuracion/?tipo=vigia">{{ icon("server", 15) }}<span class="config-nav-item-label">{{ titulos_tab.vigia }}</span></a>
+    {% endif %}
+  </nav>
+
+  {% if tab_activo == 'empresas' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div>
+        <h2>Empresas</h2>
+        <p>Las empresas que aparecen como sede en el calendario y se enlazan con proyectos/incidencias de Mantis.</p>
+      </div>
+      <button class="btn-primary" type="button" onclick="openEmpresaModal('new')">+ Nueva empresa</button>
+    </div>
+    <div class="config-table">
+      {% for e in empresas %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ e.color }}"></span>
+        <span class="config-name">{{ e.nombre }}</span>
+        {% if e.nombre_fiscal %}<span class="config-meta">{{ e.nombre_fiscal }}</span>{% endif %}
+        {% if e.mantis_project_id %}<span class="config-meta">Mantis #{{ e.mantis_project_id }}</span>{% endif %}
+        {% if e.dominio_email %}<span class="config-meta">@{{ e.dominio_email }}</span>{% endif %}
+        {% if not e.activo %}<span class="config-meta">Inactiva</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openEmpresaModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/empresa/{{ e.empresa_id }}/toggle/">{{ csrf_field() }}
+            <button type="submit" title="{% if e.activo %}Desactivar{% else %}Activar{% endif %}">{{ icon("zap", 14) }}</button>
+          </form>
+        </span>
+        <span data-nombre="{{ e.nombre }}" data-nombre-fiscal="{{ e.nombre_fiscal }}" data-color="{{ e.color }}" data-mantis-id="{{ e.mantis_project_id }}" data-dominio-email="{{ e.dominio_email }}" data-empresa-id="{{ e.empresa_id }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Aún no hay ninguna empresa.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'categorias' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Categorías</h2><p>Categorías globales de tareas (no ligadas a un proyecto concreto).</p></div>
+      <button class="btn-primary" type="button" onclick="openCategoriaModal('new')">+ Nueva categoría</button>
+    </div>
+    <div class="config-table">
+      {% for c in valores_tab %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ c.color }}"></span>
+        <span class="config-name">{{ c.nombre }}</span>
+        {% if not c.activo %}<span class="config-meta">Inactiva</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openCategoriaModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/categoria/{{ c.id }}/toggle/">{{ csrf_field() }}
+            <button type="submit" title="{% if c.activo %}Desactivar{% else %}Activar{% endif %}">{{ icon("zap", 14) }}</button>
+          </form>
+        </span>
+        <span data-nombre="{{ c.nombre }}" data-color="{{ c.color }}" data-id="{{ c.id }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin categorías globales.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'sistemas' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Sistemas</h2><p>Aplicaciones/sistemas internos, opcionalmente ligados a una Empresa.</p></div>
+      <button class="btn-primary" type="button" onclick="openSistemaModal('new')">+ Nuevo sistema</button>
+    </div>
+    <div class="config-table">
+      {% for s in valores_tab %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ s.color }}"></span>
+        <span class="config-name">{{ s.nombre }}</span>
+        {% if s.empresa %}<span class="config-meta">{{ s.empresa }}</span>{% endif %}
+        {% if not s.activo %}<span class="config-meta">Inactivo</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openSistemaModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/sistema/{{ s.id }}/toggle/">{{ csrf_field() }}
+            <button type="submit" title="{% if s.activo %}Desactivar{% else %}Activar{% endif %}">{{ icon("zap", 14) }}</button>
+          </form>
+        </span>
+        <span data-nombre="{{ s.nombre }}" data-color="{{ s.color }}" data-id="{{ s.id }}" data-empresa-id="{{ s.empresa_id }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin sistemas.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'iniciativas' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Iniciativas</h2><p>Iniciativas/proyectos transversales que agrupan tareas de varios proyectos.</p></div>
+      <button class="btn-primary" type="button" onclick="openIniciativaModal('new')">+ Nueva iniciativa</button>
+    </div>
+    <div class="config-table">
+      {% for i in valores_tab %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ i.color }}"></span>
+        <span class="config-name">{{ i.nombre }}</span>
+        {% if i.responsable %}<span class="config-meta">{{ i.responsable }}</span>{% endif %}
+        {% if not i.activo %}<span class="config-meta">Inactiva</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openIniciativaModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/iniciativa/{{ i.id }}/toggle/">{{ csrf_field() }}
+            <button type="submit" title="{% if i.activo %}Desactivar{% else %}Activar{% endif %}">{{ icon("zap", 14) }}</button>
+          </form>
+        </span>
+        <span data-nombre="{{ i.nombre }}" data-responsable="{{ i.responsable }}" data-color="{{ i.color }}" data-id="{{ i.id }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin iniciativas.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'tipos_dia_especial' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Tipos de día especial</h2><p>Catálogo de anotaciones/banners/sedes manuales del Calendario.</p></div>
+      <button class="btn-primary" type="button" onclick="openTipoModal('new')">+ Nuevo tipo</button>
+    </div>
+    <div class="config-callout">
+      {{ icon("calendar", 14) }} Las sedes de cada empresa ("Sede &lt;empresa&gt;") no aparecen aquí — se generan solas a partir de tus <a href="/configuracion/?tipo=empresas">Empresas</a> activas. Aquí solo gestionas Anotación/Banner y sedes manuales (ej. Teletrabajo).
+    </div>
+    <div class="config-table">
+      {% for t in valores_tab %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ t.color }}"></span>
+        <span class="config-name">{{ t.nombre }}</span>
+        <span class="config-meta">{{ t.categoria }}</span>
+        {% if t.urgente %}<span class="config-meta">Urgente</span>{% endif %}
+        {% if t.cuenta_para_sla %}<span class="config-meta">Cuenta SLA</span>{% endif %}
+        {% if not t.activo %}<span class="config-meta">Inactivo</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openTipoModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/tipo-dia-especial/{{ t.id }}/toggle/">{{ csrf_field() }}
+            <button type="submit" title="{% if t.activo %}Desactivar{% else %}Activar{% endif %}">{{ icon("zap", 14) }}</button>
+          </form>
+        </span>
+        <span data-nombre="{{ t.nombre }}" data-categoria="{{ t.categoria }}" data-color="{{ t.color }}" data-id="{{ t.id }}"
+              data-urgente="{{ 'true' if t.urgente else 'false' }}" data-cuenta-sla="{{ 'true' if t.cuenta_para_sla else 'false' }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin tipos de día especial.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'dias_especiales' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Días especiales</h2><p>Anotaciones, banners y sedes puntuales del Calendario.</p></div>
+      <button class="btn-primary" type="button" onclick="openDiaModal('new')">+ Nuevo día especial</button>
+    </div>
+    <div class="config-callout">
+      {{ icon("calendar", 14) }} Lo que definas aquí no se ve en esta pantalla — se pinta en el <a href="/calendario/">Calendario</a> (fondo de color = Sede del día, puntos = Vacaciones/Festivo/Compensado, franja = Aviso).
+    </div>
+    <div class="config-table">
+      {% for d in valores_tab %}
+      <div class="config-row">
+        <span class="config-dot" style="background:{{ d.color }}"></span>
+        <span class="config-name">{{ d.nombre }}</span>
+        <span class="config-meta">{{ d.fecha_inicio }}{% if d.fecha_fin != d.fecha_inicio %} — {{ d.fecha_fin }}{% endif %}</span>
+        {% if d.nota %}<span class="config-meta">{{ d.nota }}</span>{% endif %}
+        <span class="config-actions">
+          <span onclick="openDiaModal('edit', this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <form method="post" action="/configuracion/dia-especial/{{ d.dia_id }}/eliminar/" id="diaEspecialDelForm-{{ d.dia_id }}"
+                onsubmit="event.preventDefault(); showConfirm('¿Eliminar este día especial?', function(){ document.getElementById('diaEspecialDelForm-{{ d.dia_id }}').submit(); }, {title:'Eliminar día especial', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+            <button type="submit" title="Eliminar">{{ icon("trash-2", 14) }}</button>
+          </form>
+        </span>
+        <span data-dia-id="{{ d.dia_id }}"
+              data-tipo-valor="{% if d.empresa_id %}empresa:{{ d.empresa_id }}{% else %}tipo:{{ d.tipo_id }}{% endif %}"
+              data-fecha-inicio="{{ d.fecha_inicio }}" data-fecha-fin="{{ d.fecha_fin }}"
+              data-nota="{{ d.nota }}" data-color="{{ d.color }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin días especiales.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'textos' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Textos de interfaz</h2><p>Todo el texto visible de la app real sale de aquí (esta v2 todavía no lo lee, ver README).</p></div>
+    </div>
+    <div class="texto-filters">
+      <input type="text" id="textoSearch" placeholder="Buscar por clave o texto..." oninput="filterTextos()">
+      <select id="textoCategoriaFilter" onchange="filterTextos()">
+        <option value="">Todas las categorías</option>
+        {% for c in textos_categorias %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <span id="textoCount" class="texto-count"></span>
+    </div>
+    <div class="config-table texto-table" id="textoTable">
+      {% for t in valores_tab %}
+      <div class="config-row texto-row" data-clave="{{ t.clave|lower }}" data-valor="{{ t.valor|lower }}" data-categoria="{{ t.categoria }}">
+        <span class="texto-categoria-chip">{{ t.categoria }}</span>
+        <span class="texto-clave" title="{{ t.clave }}">{{ t.clave }}</span>
+        <span class="texto-valor">{{ t.valor }}</span>
+        <span class="config-actions">
+          <span onclick="openTextoModal(this.closest('.config-row'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+        </span>
+        <span data-clave="{{ t.clave }}" data-valor="{{ t.valor }}" hidden></span>
+      </div>
+      {% else %}<p class="config-empty">Sin textos registrados.</p>{% endfor %}
+    </div>
+  </div>
+
+  {% elif tab_activo == 'mantis' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Mantis</h2><p>Proyecto destino de las incidencias importadas, y umbrales de color del SLA.</p></div>
+    </div>
+    <form class="config-form-card" method="post" action="/configuracion/mantis/guardar/">{{ csrf_field() }}
+      <div class="form-group">
+        <label>PROYECTO DESTINO</label>
+        <select name="proyecto_destino">
+          <option value="">— sin elegir —</option>
+          {% for p in proyectos %}
+          <option value="{{ p.id }}" {% if p.id == mantis_proyecto_destino %}selected{% endif %}>{{ p.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label>ID DEL PROYECTO POOL EN MANTIS</label><input type="number" name="pool_project_id" value="{{ mantis_pool_project_id }}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>UMBRAL ÁMBAR (HORAS)</label><input type="number" name="umbral_ambar_horas" value="{{ mantis_umbral_ambar_horas }}"></div>
+        <div class="form-group"><label>UMBRAL ROJO (HORAS)</label><input type="number" name="umbral_rojo_horas" value="{{ mantis_umbral_rojo_horas }}"></div>
+      </div>
+      <button class="btn-primary btn-sm" type="submit">Guardar</button>
+    </form>
+
+    <div class="config-subsection">
+      <label>Vigilante de Mantis (aviso de escritorio de incidencias nuevas)</label>
+      <p>Pausar corta TODAS las llamadas a Mantis del vigilante hasta que lo reanudes. Intervalo, horario, formato del aviso e imagen por empresa: <a href="/configuracion/?tipo=vigilante">Configuración → Vigilante de Mantis</a>.</p>
+      <form method="post" action="/configuracion/mantis/vigilante/" class="toggle-switch-row">{{ csrf_field() }}
+        <button type="submit" class="toggle-switch {% if not mantis_watcher_pausado %}on{% endif %}" title="{% if mantis_watcher_pausado %}Reanudar{% else %}Pausar{% endif %}">
+          <span class="toggle-switch-knob"></span>
+        </button>
+        <span class="toggle-switch-label">{% if mantis_watcher_pausado %}Pausado{% else %}Activo{% endif %}</span>
+      </form>
+    </div>
+
+    <div class="config-subsection">
+      <label>Sincronizar tareas asignadas a mí</label>
+      <p>Trae de golpe TODAS mis incidencias en Mantis (cualquier estado, incluidas resueltas/cerradas) y crea una tarea local por cada una que aún no esté importada.</p>
+      <button type="button" class="btn-secondary btn-sm" id="mantisSyncAsignadasBtn" onclick="mantisSincronizarAsignadas()">Sincronizar ahora</button>
+      <span id="mantisSyncAsignadasResultado" style="font-size:12px;color:var(--muted);margin-left:8px;"></span>
+    </div>
+
+    {% if mantis_proyecto_destino %}
+    <div class="config-subsection">
+      <label>Mapeo de estados del CSV de Mantis</label>
+      <p>A qué columna del tablero destino corresponde cada "Estado" tal como sale en el .csv que exporta la propia Mantis.</p>
+      <form method="post" action="/configuracion/mantis/csv-estado-map/" id="mantisCsvMapForm">{{ csrf_field() }}
+        <table id="mantisCsvMapTable" style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;font-size:11px;color:var(--muted);padding:4px 6px;">Estado (Mantis)</th>
+              <th style="text-align:left;font-size:11px;color:var(--muted);padding:4px 6px;">Columna del tablero</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for estado, columna in mantis_csv_estado_map.items() %}
+            <tr>
+              <td style="padding:3px 6px;"><input type="text" name="estado[]" value="{{ estado }}" style="width:100%;"></td>
+              <td style="padding:3px 6px;">
+                <select name="columna[]" style="width:100%;">
+                  {% for col in mantis_destino_columnas %}
+                  <option value="{{ col.nombre }}" {% if col.nombre == columna %}selected{% endif %}>{{ col.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td style="padding:3px 6px;"><button type="button" class="btn-icon" onclick="this.closest('tr').remove()" title="Quitar">✕</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="button" class="btn-secondary btn-sm" onclick="mantisCsvMapAddRow()">+ Añadir fila</button>
+        <button class="btn-primary btn-sm" type="submit">Guardar</button>
+      </form>
+    </div>
+
+    <div class="config-subsection">
+      <label>Mapeo de usuarios de Mantis</label>
+      <p>Qué usuario de esta app corresponde a cada usuario/login de Mantis -- se usa al importar del pool cuando la incidencia está asignada a otra persona (a mí me asigna directo, sin necesitar esto).</p>
+      <form method="post" action="/configuracion/mantis/usuario-map/" id="mantisUsuarioMapForm">{{ csrf_field() }}
+        <table id="mantisUsuarioMapTable" style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;font-size:11px;color:var(--muted);padding:4px 6px;">Usuario/login (Mantis)</th>
+              <th style="text-align:left;font-size:11px;color:var(--muted);padding:4px 6px;">Usuario de la app</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for mantis_usuario, user_id in mantis_usuario_map.items() %}
+            <tr>
+              <td style="padding:3px 6px;"><input type="text" name="mantis_usuario[]" value="{{ mantis_usuario }}" style="width:100%;"></td>
+              <td style="padding:3px 6px;">
+                <select name="user_id[]" style="width:100%;">
+                  {% for u in usuarios %}
+                  <option value="{{ u.id }}" {% if u.id|string == user_id|string %}selected{% endif %}>{{ u.nombre_completo }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td style="padding:3px 6px;"><button type="button" class="btn-icon" onclick="this.closest('tr').remove()" title="Quitar">✕</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="button" class="btn-secondary btn-sm" onclick="mantisUsuarioMapAddRow()">+ Añadir fila</button>
+        <button class="btn-primary btn-sm" type="submit">Guardar</button>
+      </form>
+    </div>
+
+    <div class="config-subsection">
+      <label>Importar historial desde el CSV de Mantis</label>
+      <p>Importa de golpe el .csv que exporta la propia Mantis (botón "Exportar CSV" dentro de Mantis) — no es la plantilla de Excel de la app.</p>
+      <form method="post" action="/configuracion/mantis/csv-importar/" enctype="multipart/form-data">{{ csrf_field() }}
+        <input type="file" name="csv_mantis" accept=".csv" required>
+        <button class="btn-primary btn-sm" type="submit" style="margin-top:8px;">Importar CSV</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif tab_activo == 'sistema' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Copias de seguridad</h2><p>Backups de la base de datos real (nunca la de pruebas), en data/backups_bd/.</p></div>
+      <form method="post" action="/configuracion/backup/nuevo/">{{ csrf_field() }}<button class="btn-primary" type="submit">Hacer backup ahora</button></form>
+    </div>
+    <div class="config-table">
+      {% for b in valores_tab %}
+      <div class="config-row">
+        <span class="config-name" style="font-size:12.5px">{{ b.nombre }}</span>
+        <span class="config-meta">{{ b.size_kb }} KB</span>
+        <span class="config-meta">{{ b.fecha }}</span>
+      </div>
+      {% else %}<p class="config-empty">Sin copias de seguridad todavía.</p>{% endfor %}
+    </div>
+
+    <!-- Borradores locales de whiteboard sin guardar -- viven solo en localStorage
+         del navegador, por eso se listan aqui con JS en vez de venir del servidor.
+         Solo se muestra si hay alguno. -->
+    <div id="wbDraftsSection" hidden style="margin-top:28px;">
+      <div class="config-panel-head">
+        <div><h2>Pizarras sin guardar</h2><p>Borradores automáticos de Whiteboard guardados en este navegador, pendientes de recuperar o descartar.</p></div>
+      </div>
+      <div class="config-table" id="wbDraftsTable"></div>
+    </div>
+  </div>
+  {% elif tab_activo == 'api' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>API externa de tareas</h2><p>Claves para que un script externo (curl, Python, Power BI…) cree/consulte/mueva tareas sin pasar por el navegador, vía la cabecera <code>X-API-Key</code>.</p></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+      {% if api_master_token_configurado %}Hay una clave maestra configurada en <code>.env</code> (acceso a todos los proyectos).{% else %}No hay clave maestra configurada en <code>.env</code> — solo funcionan los tokens de abajo.{% endif %}
+    </p>
+    <form method="post" action="/configuracion/api/token/nuevo/" style="max-width:420px;margin-bottom:20px;">{{ csrf_field() }}
+      <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" required placeholder="ej. Script Power BI"></div>
+      <div class="form-group"><label>PROYECTO <span style="font-weight:400;text-transform:none">(opcional — vacío = todos)</span></label>
+        <select name="proyecto_id">
+          <option value="">— Todos los proyectos —</option>
+          {% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn-primary" type="submit">Crear token</button>
+    </form>
+    <div class="config-table">
+      {% for t in valores_tab %}
+      <div class="config-row">
+        <span class="config-name" style="font-size:12.5px">{{ t.nombre }}</span>
+        <span class="config-meta">{{ t.proyecto_nombre or "Todos los proyectos" }}</span>
+        <span class="config-meta">Creado {{ t.creado_en }}</span>
+        <span class="config-meta">{{ ("Usado " + t.ultimo_uso_en) if t.ultimo_uso_en else "Nunca usado" }}</span>
+        <span class="config-actions">
+          <span onclick="revocarApiToken('{{ t.token_id }}')" title="Revocar">{{ icon("trash-2", 14) }}</span>
+        </span>
+      </div>
+      {% else %}<p class="config-empty">Sin tokens creados todavía.</p>{% endfor %}
+    </div>
+  </div>
+  {% elif tab_activo == 'calendario_sync' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Calendario externo</h2><p>Trae tus reuniones de Outlook/Office 365 al Calendario de esta app.</p></div>
+    </div>
+    <div class="config-callout">
+      {{ icon("rss", 14) }} Es un ajuste por usuario. Genera el enlace en Outlook/Office 365 → Configuración → Calendario → <strong>Compartir calendario</strong> → Publicar un calendario (elige un feed ICS, no HTML) y pega la URL aquí abajo. De momento solo se guarda la URL — la sincronización es manual, con el botón "Sincronizar ahora".
+    </div>
+    <form class="config-form-card" method="post" action="/configuracion/calendario-sync/guardar/" style="max-width:520px;">{{ csrf_field() }}
+      <div class="form-group">
+        <label>URL DEL FEED ICS</label>
+        <input type="url" name="ics_url" value="{{ calendario_sync_config.ics_url if calendario_sync_config else '' }}"
+               placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics">
+      </div>
+      <button class="btn-primary btn-sm" type="submit">Guardar</button>
+    </form>
+    {% if calendario_sync_config and calendario_sync_config.ics_url %}
+    <div class="config-subsection">
+      <label>Sincronización</label>
+      <p>Vuelve a traer los eventos del feed ICS de arriba, sustituyendo lo que ya había importado antes de este mismo feed.</p>
+      <button type="button" class="btn-secondary btn-sm" id="calSyncBtn" onclick="sincronizarCalendarioAhora()">Sincronizar ahora</button>
+      <span id="calSyncResultado" style="font-size:12px;color:var(--muted);margin-left:8px;"></span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif tab_activo == 'conectores' %}
+  {% include '_config_conectores.html' %}
+
+  {% elif tab_activo == 'nexus' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div><h2>Nexus</h2><p>Quién puede ver la pestaña y buscar en el catálogo documental.</p></div>
+    </div>
+    <div class="config-callout">
+      {{ icon("search", 14) }} El modo código (búsqueda dev) y las credenciales cifradas de cada proyecto siguen siendo solo para IT pase lo que pase aquí — este ajuste solo decide quién ve la búsqueda normal.
+    </div>
+    <form class="config-form-card" method="post" action="/configuracion/nexus/guardar/" style="max-width:520px;">{{ csrf_field() }}
+      <div class="form-group">
+        <label>ACCESO</label>
+        <select name="acceso">
+          <option value="it" {% if nexus_acceso == 'it' %}selected{% endif %}>Solo equipo IT</option>
+          <option value="todos" {% if nexus_acceso == 'todos' %}selected{% endif %}>Cualquiera con sesión</option>
+        </select>
+      </div>
+      <button class="btn-primary btn-sm" type="submit">Guardar</button>
+    </form>
+  </div>
+
+  {% elif tab_activo in ('recordatorio', 'vigilante', 'vigia') %}
+  {% set es_rec = tab_activo == 'recordatorio' %}
+  {% set es_vig = tab_activo == 'vigilante' %}
+  {% set es_vigia = tab_activo == 'vigia' %}
+  <div class="config-panel">
+    <div class="config-panel-head">
+      <div>
+        <h2>{{ titulos_tab[tab_activo] }}</h2>
+        <p>{% if es_rec %}Aviso de escritorio de pausas activas cada cierto tiempo, con un mensaje de la lista de abajo.{% elif es_vigia %}Vigila una carpeta (por ejemplo, la cola de entrada de una integración) y te deja una nota en el Buzón, con aviso en la campana, cuando aparece un archivo en Fallidos, cuando uno se queda atascado en la cola o cuando no se puede ver la carpeta. Cada cosa se avisa una sola vez, y otra cuando se resuelve.{% else %}Aviso de escritorio cuando llega una incidencia nueva al pool o a una empresa (una sola vez por incidencia).{% endif %}</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <form method="post" action="/configuracion/{{ tab_activo }}/activo/" class="toggle-switch-row">{{ csrf_field() }}
+          <button type="submit" class="toggle-switch {% if esc_cfg.activo == '1' %}on{% endif %}" title="{% if esc_cfg.activo == '1' %}Pausar{% else %}Activar{% endif %}"><span class="toggle-switch-knob"></span></button>
+          <span class="toggle-switch-label">{% if esc_cfg.activo == '1' %}Activo{% else %}Pausado{% endif %}</span>
+        </form>
+        {% if not es_rec %}
+        <form method="post" action="/configuracion/{{ tab_activo }}/revisar/">{{ csrf_field() }}<button class="btn-secondary btn-sm" type="submit" title="{% if es_vigia %}Mira la carpeta ahora mismo (y avisa si hay algo){% else %}Consulta Mantis ahora mismo{% endif %}">Revisar ahora</button></form>
+        {% endif %}
+        <form method="post" action="/configuracion/{{ tab_activo }}/probar/">{{ csrf_field() }}<button class="btn-primary btn-sm" type="submit">Probar aviso</button></form>
+      </div>
+    </div>
+
+    {% if entorno_test %}
+    <div class="config-callout">{{ icon("zap", 14) }} Estás en el entorno de PRUEBAS, pero esta pantalla lee y guarda siempre en la base de datos REAL: los avisos de escritorio son de verdad, da igual el entorno.</div>
+    {% endif %}
+    {% if not esc_activos %}
+    <div class="config-callout">{{ icon("clock", 14) }} Los avisos no están corriendo en este proceso de la app (otro proceso ya los tiene, o están desactivados con APP_TAREAS_SIN_ESCRITORIO). "Probar aviso" funciona igual.</div>
+    {% endif %}
+
+    <div class="esc-estado">
+      <span><strong>Última vez:</strong> {{ esc_estado.ultima or "todavía nunca" }}</span>
+      {% if esc_estado.resultado %}<span class="esc-estado-res">{{ esc_estado.resultado }}</span>{% endif %}
+    </div>
+
+    <form method="post" action="/configuracion/{{ tab_activo }}/guardar/">{{ csrf_field() }}
+      {% if es_vigia %}
+      <div class="config-subsection">
+        <label>Qué vigilar y a quién avisar</label>
+        <p>La app mira la carpeta con el usuario de Windows con el que corre: si ese usuario no la ve (VPN, red, permisos), avisa de "sin acceso" en vez de callarse. Las subcarpetas se escriben relativas a la carpeta principal; <code>.</code> es la propia carpeta.</p>
+        <div class="form-group"><label>CARPETA A VIGILAR (MEJOR LA RUTA UNC QUE UNA LETRA DE UNIDAD)</label><input type="text" name="carpeta" maxlength="250" value="{{ esc_cfg.carpeta }}"></div>
+        <div class="form-row">
+          <div class="form-group"><label>COLA DE ENTRADA (SEPARADAS POR COMAS)</label><input type="text" name="carpetas_entrada" maxlength="250" value="{{ esc_cfg.carpetas_entrada }}"></div>
+          <div class="form-group"><label>CARPETA DE FALLIDOS</label><input type="text" name="carpeta_fallidos" maxlength="100" value="{{ esc_cfg.carpeta_fallidos }}"></div>
+          <div class="form-group" style="flex:0 0 150px;"><label>ATASCADO A LOS (MIN)</label><input type="number" name="minutos_atasco" min="1" max="1440" value="{{ esc_cfg.minutos_atasco }}"></div>
+        </div>
+        <div class="form-group"><label>A QUIÉN AVISAR (NOTA DEL BUZÓN + CAMPANA)</label>
+          <select name="destinatario">
+            <option value="">— nadie: no se vigila —</option>
+            {% for u in vigia_usuarios %}<option value="{{ u }}" {% if u == esc_cfg.destinatario %}selected{% endif %}>{{ u }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn-primary btn-sm" type="submit">Guardar</button>
+      </div>
+      {% endif %}
+      <div class="config-subsection">
+        <label>Cuándo</label>
+        <p>{% if es_rec %}El primer aviso sale un intervalo después de arrancar la app, no nada más encender.{% elif es_vigia %}Cada cuánto se mira la carpeta. Fuera de horario no se mira, pero lo que haya pasado mientras se avisa en la primera revisión dentro de horario.{% else %}Cada cuánto se consulta Mantis. Pausado = ninguna llamada a la API.{% endif %} Los cambios se aplican en la siguiente vuelta, sin reiniciar.</p>
+        <div class="form-row">
+          <div class="form-group"><label>CADA (MINUTOS)</label><input type="number" name="intervalo_min" min="1" max="1440" value="{{ esc_cfg.intervalo_min }}"></div>
+          {% if es_rec %}
+          <div class="form-group"><label>QUÉ MENSAJE SALE</label>
+            <select name="orden">
+              <option value="aleatorio" {% if esc_cfg.orden == 'aleatorio' %}selected{% endif %}>Al azar</option>
+              <option value="rotacion" {% if esc_cfg.orden == 'rotacion' %}selected{% endif %}>Al azar sin repetir hasta agotar la lista</option>
+              <option value="orden" {% if esc_cfg.orden == 'orden' %}selected{% endif %}>En el orden de la lista</option>
+            </select>
+          </div>
+          {% endif %}
+        </div>
+        <div class="form-check" style="margin-bottom:8px;"><input type="checkbox" name="solo_horario" id="esc_solo_horario" value="1" {% if esc_cfg.solo_horario == '1' %}checked{% endif %}><label for="esc_solo_horario">Solo en este horario</label></div>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="form-group" style="flex:0 0 110px;"><label>DESDE</label><input type="time" name="hora_inicio" value="{{ esc_cfg.hora_inicio }}"></div>
+          <div class="form-group" style="flex:0 0 110px;"><label>HASTA</label><input type="time" name="hora_fin" value="{{ esc_cfg.hora_fin }}"></div>
+          <div class="form-group"><label>DÍAS</label>
+            <div class="esc-dias">
+              {% set dias_sel = esc_cfg.dias.split(',') %}
+              {% for num, letra in esc_dias %}<label class="esc-dia"><input type="checkbox" name="dias" value="{{ num }}" {% if num|string in dias_sel %}checked{% endif %}><span>{{ letra }}</span></label>{% endfor %}
+            </div>
+          </div>
+        </div>
+        {% if es_rec %}
+        <div class="form-check"><input type="checkbox" name="saltar_festivos" id="esc_festivos" value="1" {% if esc_cfg.saltar_festivos == '1' %}checked{% endif %}><label for="esc_festivos">No avisar en festivos ni días no laborables (los tipos de día especial que cuentan para el SLA, en Calendario)</label></div>
+        {% endif %}
+      </div>
+
+      <div class="config-subsection">
+        <label>Cómo se ve</label>
+        {% if es_vigia %}
+        <div class="form-check" style="margin-bottom:8px;"><input type="checkbox" name="toast" id="vigia_toast" value="1" {% if esc_cfg.toast == '1' %}checked{% endif %}><label for="vigia_toast">Además de la nota y la campana, mostrar un aviso de escritorio de Windows</label></div>
+        {% endif %}
+        <p>Variables que puedes usar en el título{% if es_vig %} y en el texto{% endif %}: {% for v in esc_variables %}<code>{{ '{' ~ v ~ '}' }}</code>{% if not loop.last %} {% endif %}{% endfor %}. Usa <code>\n</code> para un salto de línea.</p>
+        <div class="form-row">
+          <div class="form-group"><label>NOMBRE DEL REMITENTE (ARRIBA DEL AVISO)</label><input type="text" name="app_id" maxlength="80" value="{{ esc_cfg.app_id }}"></div>
+          <div class="form-group"><label>TÍTULO</label><input type="text" name="titulo" maxlength="120" value="{{ esc_cfg.titulo }}"></div>
+        </div>
+        {% if es_vig %}
+        <div class="form-group"><label>TEXTO DEL AVISO</label><textarea name="formato" rows="3" maxlength="500">{{ esc_cfg.formato }}</textarea></div>
+        <div class="form-check" style="margin-bottom:10px;"><input type="checkbox" name="abrir_al_pulsar" id="esc_abrir" value="1" {% if esc_cfg.abrir_al_pulsar == '1' %}checked{% endif %}><label for="esc_abrir">Al pulsar el aviso, abrir la incidencia en Mantis</label></div>
+        {% endif %}
+        <div class="form-row">
+          <div class="form-group"><label>CUÁNTO SE QUEDA EN PANTALLA</label>
+            <select name="duracion">
+              <option value="short" {% if esc_cfg.duracion == 'short' %}selected{% endif %}>Corto (~7 s)</option>
+              <option value="long" {% if esc_cfg.duracion == 'long' %}selected{% endif %}>Largo (~25 s)</option>
+            </select>
+          </div>
+          <div class="form-group"><label>SONIDO</label>
+            <select name="sonido">{% for clave, nombre in esc_sonidos.items() %}<option value="{{ clave }}" {% if esc_cfg.sonido == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <button class="btn-primary btn-sm" type="submit">Guardar</button>
+      </div>
+    </form>
+
+    {% if es_rec or es_vigia %}
+    <div class="config-subsection">
+      <label>Imagen del aviso</label>
+      <p>Icono que sale a la izquierda del aviso{% if es_vigia %} de escritorio{% endif %}. PNG, JPG, ICO, BMP o GIF, máximo 2 MB.</p>
+      <div class="esc-icono-row">
+        {% if esc_cfg.icono %}<img class="esc-icono" src="/configuracion/escritorio/icono/{{ esc_cfg.icono }}" alt="">{% else %}<span class="esc-icono esc-icono-vacio" title="Este aviso todavía no tiene imagen: saldrá sin icono">Sin imagen</span>{% endif %}
+        <form method="post" action="/configuracion/{{ tab_activo }}/icono/" enctype="multipart/form-data" class="esc-icono-form">{{ csrf_field() }}
+          <input type="file" name="icono" accept=".png,.jpg,.jpeg,.ico,.bmp,.gif" onchange="escIconoElegido(this)">
+          <select name="existente" title="O elige una imagen ya subida" onchange="escIconoElegido(this)">
+            <option value="">— o una ya subida / sin imagen —</option>
+            {% for n in esc_iconos %}<option value="{{ n }}" {% if n == esc_cfg.icono %}selected{% endif %}>{{ n }}</option>{% endfor %}
+          </select>
+          <button class="btn-secondary btn-sm" type="submit">Aplicar</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if es_rec %}
+    <div class="config-subsection">
+      <label>Mensajes ({{ valores_tab|length }}, {{ valores_tab|selectattr('activo')|list|length }} activos)</label>
+      <p>Un mensaje por línea: puedes pegar varios de golpe. La categoría es opcional (Postura, Vista, Movimiento...) y se puede usar en el título con <code>{categoria}</code>.</p>
+      <form method="post" action="/configuracion/recordatorio/mensaje/nuevo/" class="esc-nuevo">{{ csrf_field() }}
+        <textarea name="texto" rows="2" placeholder="Escribe uno o varios mensajes, uno por línea" required></textarea>
+        <div class="form-row">
+          <input type="text" name="categoria" list="recCategorias" placeholder="Categoría (opcional)" maxlength="50">
+          <button class="btn-primary btn-sm" type="submit" style="flex-shrink:0;">Añadir</button>
+        </div>
+        <datalist id="recCategorias">{% for c in recordatorio_categorias %}<option value="{{ c }}">{% endfor %}</datalist>
+      </form>
+      <div class="texto-filters" style="margin-top:12px;">
+        <input type="text" id="recFiltro" placeholder="Buscar mensaje..." oninput="recFiltrar()">
+        <span class="texto-count" id="recCount"></span>
+      </div>
+      <div class="config-table texto-table">
+        {% for m in valores_tab %}
+        <div class="config-row rec-row" data-texto="{{ (m.texto ~ ' ' ~ m.categoria)|lower }}" {% if not m.activo %}style="opacity:.5"{% endif %}>
+          <div style="flex:1;min-width:0;">
+            <div class="rec-texto" id="recTexto{{ m.id }}">{{ m.texto }}</div>
+            <form method="post" action="/configuracion/recordatorio/mensaje/{{ m.id }}/editar/" id="recEdit{{ m.id }}" hidden class="rec-edit">{{ csrf_field() }}
+              <textarea name="texto" rows="2" maxlength="500" required>{{ m.texto }}</textarea>
+              <div class="form-row">
+                <input type="text" name="categoria" list="recCategorias" value="{{ m.categoria }}" placeholder="Categoría" maxlength="50">
+                <button class="btn-primary btn-sm" type="submit">Guardar</button>
+                <button class="btn-secondary btn-sm" type="button" onclick="recEditar({{ m.id }})">Cancelar</button>
+              </div>
+            </form>
+          </div>
+          {% if m.categoria %}<span class="texto-categoria-chip" title="{{ m.categoria }}">{{ m.categoria }}</span>{% endif %}
+          <span class="config-meta" title="Veces mostrado{% if m.ultimo_mostrado %} · última: {{ m.ultimo_mostrado }}{% endif %}">{{ m.veces_mostrado }}×</span>
+          <div class="config-actions">
+            <span onclick="recEditar({{ m.id }})" title="Editar">{{ icon("edit-2", 14) }}</span>
+            <form method="post" action="/configuracion/recordatorio/mensaje/{{ m.id }}/toggle/">{{ csrf_field() }}<button type="submit" title="{% if m.activo %}Desactivar{% else %}Activar{% endif %}">{% if m.activo %}⏸{% else %}▶{% endif %}</button></form>
+            <form method="post" action="/configuracion/recordatorio/mensaje/{{ m.id }}/eliminar/" onsubmit="return confirm('¿Eliminar este mensaje?')">{{ csrf_field() }}<button type="submit" title="Eliminar">{{ icon("trash-2", 14) }}</button></form>
+          </div>
+        </div>
+        {% else %}<p class="config-empty">No hay mensajes. Añade alguno arriba: sin mensajes activos el Recordatorio no muestra nada.</p>{% endfor %}
+      </div>
+    </div>
+    {% elif es_vig %}
+    <div class="config-subsection">
+      <label>Imagen del aviso por empresa</label>
+      <p>Icono según dónde esté la incidencia: el del pool si aún está sin triar, el de su empresa si ya está en un proyecto de empresa, y si no tiene, el de por defecto. "Probar" manda un aviso de ejemplo con esa imagen.</p>
+      <div class="config-table">
+        {% set filas = [{'id': 'pool', 'nombre': 'Pool sin triar (Incidencias)', 'icono': esc_cfg.icono_pool, 'probar': ''},
+                        {'id': 'defecto', 'nombre': 'Por defecto', 'icono': esc_cfg.icono_defecto, 'probar': None}] %}
+        {% for e in empresas_iconos %}{% if e.mantis_project_id %}{% set _ = filas.append({'id': e.empresa_id, 'nombre': e.nombre, 'icono': e.icono, 'probar': e.empresa_id}) %}{% endif %}{% endfor %}
+        {% for f in filas %}
+        <div class="config-row">
+          {% if f.icono %}<img class="esc-icono" src="/configuracion/escritorio/icono/{{ f.icono }}" alt="">{% else %}<span class="esc-icono esc-icono-vacio" title="Este aviso todavía no tiene imagen: saldrá sin icono">Sin imagen</span>{% endif %}
+          <span class="config-name" style="min-width:150px;">{{ f.nombre }}</span>
+          <form method="post" action="/configuracion/vigilante/icono/" enctype="multipart/form-data" class="esc-icono-form">{{ csrf_field() }}
+            <input type="hidden" name="destino" value="{{ f.id }}">
+            <input type="file" name="icono" accept=".png,.jpg,.jpeg,.ico,.bmp,.gif" onchange="escIconoElegido(this)">
+            <select name="existente" onchange="escIconoElegido(this)">
+              <option value="">— sin imagen —</option>
+              {% for n in esc_iconos %}<option value="{{ n }}" {% if n == f.icono %}selected{% endif %}>{{ n }}</option>{% endfor %}
+            </select>
+            <button class="btn-secondary btn-sm" type="submit">Aplicar</button>
+          </form>
+          {% if f.probar is not none %}
+          <form method="post" action="/configuracion/vigilante/probar/">{{ csrf_field() }}<input type="hidden" name="empresa_id" value="{{ f.probar }}"><button class="btn-secondary btn-sm" type="submit">Probar</button></form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <p style="margin-top:10px;">Solo salen las empresas con un ID de proyecto de Mantis (Configuración → Empresas).</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% endif %}
+</div>
+
+<!-- MODAL: empresa -->
+<div class="modal-overlay" id="empresaModal">
+  <div class="modal">
+    <div class="modal-stripe" id="empModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="empModalTitle">Nueva empresa</h3>
+      <form method="post" id="empModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE COMERCIAL</label><input type="text" name="nombre" id="emp_nombre" required></div>
+        <div class="form-group"><label>NOMBRE FISCAL <span style="font-weight:400;text-transform:none">(opcional)</span></label><input type="text" name="nombre_fiscal" id="emp_nombre_fiscal"></div>
+        <div class="form-group"><label>ID DE PROYECTO EN MANTIS <span style="font-weight:400;text-transform:none">(opcional)</span></label><input type="number" name="mantis_project_id" id="emp_mantis_project_id"></div>
+        <div class="form-group"><label>DOMINIO DE CORREO <span style="font-weight:400;text-transform:none">(opcional, ej. miempresa.com — solo para sugerir empresa en Mantis)</span></label><input type="text" name="dominio_email" id="emp_dominio_email" placeholder="empresa.com"></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="emp_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('empresaModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: categoria -->
+<div class="modal-overlay" id="categoriaModal">
+  <div class="modal">
+    <div class="modal-stripe" id="catModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="catModalTitle">Nueva categoría</h3>
+      <form method="post" id="catModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="cat_nombre" required></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="cat_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('categoriaModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: sistema -->
+<div class="modal-overlay" id="sistemaModal">
+  <div class="modal">
+    <div class="modal-stripe" id="sisModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="sisModalTitle">Nuevo sistema</h3>
+      <form method="post" id="sisModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="sis_nombre" required></div>
+        <div class="form-group"><label>EMPRESA</label>
+          <select name="empresa_id" id="sis_empresa">
+            <option value="">— ninguna —</option>
+            {% for e in empresas %}<option value="{{ e.empresa_id }}">{{ e.nombre }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="sis_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('sistemaModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: iniciativa -->
+<div class="modal-overlay" id="iniciativaModal">
+  <div class="modal">
+    <div class="modal-stripe" id="iniModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="iniModalTitle">Nueva iniciativa</h3>
+      <form method="post" id="iniModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="ini_nombre" required></div>
+        <div class="form-group"><label>RESPONSABLE <span style="font-weight:400;text-transform:none">(opcional)</span></label><input type="text" name="responsable" id="ini_responsable"></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="ini_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('iniciativaModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: tipo de dia especial -->
+<div class="modal-overlay" id="tipoModal">
+  <div class="modal">
+    <div class="modal-stripe" id="tdeModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="tdeModalTitle">Nuevo tipo</h3>
+      <form method="post" id="tdeModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="tde_nombre" required></div>
+        <div class="form-group"><label>CATEGORÍA</label>
+          <select name="categoria" id="tde_categoria" onchange="onTipoCategoriaChange()">
+            <option value="anotacion">Anotación</option>
+            <option value="banner">Banner</option>
+            <option value="sede">Sede</option>
+          </select>
+        </div>
+        <div class="form-group form-check" id="tde_urgente_group" style="display:none">
+          <input type="checkbox" name="urgente" value="true" id="tde_urgente">
+          <label for="tde_urgente">Banner urgente (rojo sólido)</label>
+        </div>
+        <div class="form-group form-check">
+          <input type="checkbox" name="cuenta_para_sla" value="true" id="tde_cuenta_para_sla">
+          <label for="tde_cuenta_para_sla">Cuenta como no laborable para el SLA</label>
+        </div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="tde_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('tipoModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: dia especial -->
+<div class="modal-overlay" id="diaModal">
+  <div class="modal">
+    <div class="modal-stripe" id="deModalStripe"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="deModalTitle">Nuevo día especial</h3>
+      <form method="post" id="deModalForm">{{ csrf_field() }}
+        <div class="form-group">
+          <label>TIPO</label>
+          <select name="tipo" id="de_tipo" onchange="setDiaColorFromSelect()">
+            <optgroup label="Sede">
+              {% if empresas_activas is defined %}
+                {% for e in empresas_activas %}<option value="empresa:{{ e.empresa_id }}" data-color="{{ e.color }}">Sede {{ e.nombre }}</option>{% endfor %}
+                {% for t in tipos_por_categoria.sede %}<option value="tipo:{{ t.id }}" data-color="{{ t.color }}">{{ t.nombre }}</option>{% endfor %}
+              {% endif %}
+            </optgroup>
+            <optgroup label="Anotación">
+              {% if tipos_por_categoria is defined %}{% for t in tipos_por_categoria.anotacion %}<option value="tipo:{{ t.id }}" data-color="{{ t.color }}">{{ t.nombre }}</option>{% endfor %}{% endif %}
+            </optgroup>
+            <optgroup label="Banner">
+              {% if tipos_por_categoria is defined %}{% for t in tipos_por_categoria.banner %}<option value="tipo:{{ t.id }}" data-color="{{ t.color }}">{{ t.nombre }}</option>{% endfor %}{% endif %}
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>DESDE</label><input type="date" name="fecha_inicio" id="de_fecha_inicio" required></div>
+          <div class="form-group"><label>HASTA <span style="font-weight:400;text-transform:none">(si es un solo día, déjalo igual)</span></label><input type="date" name="fecha_fin" id="de_fecha_fin"></div>
+        </div>
+        <div class="form-group"><label>NOTA <span style="font-weight:400;text-transform:none">(opcional)</span></label><input type="text" name="nota" id="de_nota"></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="de_colorPicker">
+            {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}"><span style="background:{{ color }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('diaModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: editar texto -->
+<div class="modal-overlay" id="textoModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title">Editar texto</h3>
+      <form method="post" id="textoModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>CLAVE</label><input type="text" id="texto_clave_display" disabled></div>
+        <div class="form-group"><label>VALOR</label><textarea name="valor" id="texto_valor" rows="4" required></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('textoModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function sincronizarCalendarioAhora() {
+  var btn = document.getElementById('calSyncBtn');
+  var resultado = document.getElementById('calSyncResultado');
+  btn.disabled = true;
+  var textoOriginal = btn.textContent;
+  btn.textContent = 'Sincronizando…';
+  resultado.textContent = '';
+  fetch('/configuracion/calendario-sync/sincronizar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') } })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      resultado.textContent = d.ok ? 'Reuniones sincronizadas: ' + d.total : d.error;
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      resultado.textContent = 'No se pudo sincronizar.';
+    });
+}
+
+var MANTIS_DESTINO_COLUMNAS = [{% for col in mantis_destino_columnas %}{{ col.nombre|tojson_seguro }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+function mantisSincronizarAsignadas() {
+  var btn = document.getElementById('mantisSyncAsignadasBtn');
+  var resultado = document.getElementById('mantisSyncAsignadasResultado');
+  btn.disabled = true;
+  var textoOriginal = btn.textContent;
+  btn.textContent = 'Sincronizando…';
+  resultado.textContent = '';
+  fetch('/mantis/asignadas/sincronizar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') } })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      resultado.textContent = d.ok ? 'Creadas: ' + d.creadas + ' (ya importadas: ' + d.ya_importadas + ')' : d.error;
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      resultado.textContent = 'No se pudo sincronizar.';
+    });
+}
+
+function mantisCsvMapAddRow() {
+  var tbody = document.querySelector('#mantisCsvMapTable tbody');
+  var tr = document.createElement('tr');
+
+  var tdEstado = document.createElement('td');
+  tdEstado.style.padding = '3px 6px';
+  var inputEstado = document.createElement('input');
+  inputEstado.type = 'text';
+  inputEstado.name = 'estado[]';
+  inputEstado.style.width = '100%';
+  tdEstado.appendChild(inputEstado);
+
+  var tdColumna = document.createElement('td');
+  tdColumna.style.padding = '3px 6px';
+  var select = document.createElement('select');
+  select.name = 'columna[]';
+  select.style.width = '100%';
+  MANTIS_DESTINO_COLUMNAS.forEach(function(nombre) {
+    var opt = document.createElement('option');
+    opt.value = nombre;
+    opt.textContent = nombre;
+    select.appendChild(opt);
+  });
+  tdColumna.appendChild(select);
+
+  var tdBtn = document.createElement('td');
+  tdBtn.style.padding = '3px 6px';
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-icon';
+  btn.textContent = '✕';
+  btn.title = 'Quitar';
+  btn.onclick = function() { tr.remove(); };
+  tdBtn.appendChild(btn);
+
+  tr.appendChild(tdEstado);
+  tr.appendChild(tdColumna);
+  tr.appendChild(tdBtn);
+  tbody.appendChild(tr);
+  inputEstado.focus();
+}
+
+var MANTIS_USUARIOS_APP = [{% for u in usuarios %}{"id": {{ u.id|tojson_seguro }}, "nombre": {{ u.nombre_completo|tojson_seguro }}}{% if not loop.last %},{% endif %}{% endfor %}];
+
+function mantisUsuarioMapAddRow() {
+  var tbody = document.querySelector('#mantisUsuarioMapTable tbody');
+  var tr = document.createElement('tr');
+
+  var tdMantis = document.createElement('td');
+  tdMantis.style.padding = '3px 6px';
+  var inputMantis = document.createElement('input');
+  inputMantis.type = 'text';
+  inputMantis.name = 'mantis_usuario[]';
+  inputMantis.style.width = '100%';
+  tdMantis.appendChild(inputMantis);
+
+  var tdUser = document.createElement('td');
+  tdUser.style.padding = '3px 6px';
+  var select = document.createElement('select');
+  select.name = 'user_id[]';
+  select.style.width = '100%';
+  MANTIS_USUARIOS_APP.forEach(function(u) {
+    var opt = document.createElement('option');
+    opt.value = u.id;
+    opt.textContent = u.nombre;
+    select.appendChild(opt);
+  });
+  tdUser.appendChild(select);
+
+  var tdBtn2 = document.createElement('td');
+  tdBtn2.style.padding = '3px 6px';
+  var btn2 = document.createElement('button');
+  btn2.type = 'button';
+  btn2.className = 'btn-icon';
+  btn2.textContent = '✕';
+  btn2.title = 'Quitar';
+  btn2.onclick = function() { tr.remove(); };
+  tdBtn2.appendChild(btn2);
+
+  tr.appendChild(tdMantis);
+  tr.appendChild(tdUser);
+  tr.appendChild(tdBtn2);
+  tbody.appendChild(tr);
+  inputMantis.focus();
+}
+
+function revocarApiToken(tokenId) {
+  showConfirm('¿Revocar este token? Cualquier script que lo use dejará de poder acceder a la API.', function() {
+    submitPostForm('/configuracion/api/token/' + tokenId + '/eliminar/');
+  }, {title: 'Revocar token', okText: 'Revocar', danger: true});
+}
+
+function _setColor(pickerId, stripeId, color) {
+  var picker = document.getElementById(pickerId);
+  var firstRadio = picker.querySelector('input[name="color"]');
+  if (color) {
+    var radio = picker.querySelector('input[name="color"][value="' + color + '"]');
+    if (radio) radio.checked = true;
+  } else if (firstRadio) {
+    firstRadio.checked = true;
+  }
+  if (stripeId) document.getElementById(stripeId).style.background = color || (firstRadio ? firstRadio.value : '');
+}
+
+function openEmpresaModal(mode, row) {
+  var modal = document.getElementById('empresaModal');
+  var form  = document.getElementById('empModalForm');
+  document.getElementById('empModalTitle').textContent = mode === 'new' ? 'Nueva empresa' : 'Editar empresa';
+  var meta = row ? row.querySelector('[data-empresa-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/empresa/nueva/' : '/configuracion/empresa/' + meta.dataset.empresaId + '/editar/';
+  document.getElementById('emp_nombre').value = meta ? meta.dataset.nombre : '';
+  document.getElementById('emp_nombre_fiscal').value = meta ? meta.dataset.nombreFiscal : '';
+  document.getElementById('emp_mantis_project_id').value = meta ? meta.dataset.mantisId : '';
+  document.getElementById('emp_dominio_email').value = meta ? meta.dataset.dominioEmail : '';
+  _setColor('emp_colorPicker', 'empModalStripe', meta ? meta.dataset.color : '');
+  modal.classList.add('open');
+}
+
+function openCategoriaModal(mode, row) {
+  var modal = document.getElementById('categoriaModal');
+  var form  = document.getElementById('catModalForm');
+  document.getElementById('catModalTitle').textContent = mode === 'new' ? 'Nueva categoría' : 'Editar categoría';
+  var meta = row ? row.querySelector('[data-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/categoria/nueva/' : '/configuracion/categoria/' + meta.dataset.id + '/editar/';
+  document.getElementById('cat_nombre').value = meta ? meta.dataset.nombre : '';
+  _setColor('cat_colorPicker', 'catModalStripe', meta ? meta.dataset.color : '');
+  modal.classList.add('open');
+}
+
+function openSistemaModal(mode, row) {
+  var modal = document.getElementById('sistemaModal');
+  var form  = document.getElementById('sisModalForm');
+  document.getElementById('sisModalTitle').textContent = mode === 'new' ? 'Nuevo sistema' : 'Editar sistema';
+  var meta = row ? row.querySelector('[data-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/sistema/nuevo/' : '/configuracion/sistema/' + meta.dataset.id + '/editar/';
+  document.getElementById('sis_nombre').value = meta ? meta.dataset.nombre : '';
+  document.getElementById('sis_empresa').value = meta ? meta.dataset.empresaId : '';
+  _setColor('sis_colorPicker', 'sisModalStripe', meta ? meta.dataset.color : '');
+  modal.classList.add('open');
+}
+
+function openIniciativaModal(mode, row) {
+  var modal = document.getElementById('iniciativaModal');
+  var form  = document.getElementById('iniModalForm');
+  document.getElementById('iniModalTitle').textContent = mode === 'new' ? 'Nueva iniciativa' : 'Editar iniciativa';
+  var meta = row ? row.querySelector('[data-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/iniciativa/nueva/' : '/configuracion/iniciativa/' + meta.dataset.id + '/editar/';
+  document.getElementById('ini_nombre').value = meta ? meta.dataset.nombre : '';
+  document.getElementById('ini_responsable').value = meta ? meta.dataset.responsable : '';
+  _setColor('ini_colorPicker', 'iniModalStripe', meta ? meta.dataset.color : '');
+  modal.classList.add('open');
+}
+
+function onTipoCategoriaChange() {
+  document.getElementById('tde_urgente_group').style.display = document.getElementById('tde_categoria').value === 'banner' ? 'flex' : 'none';
+}
+
+function openTipoModal(mode, row) {
+  var modal = document.getElementById('tipoModal');
+  var form  = document.getElementById('tdeModalForm');
+  document.getElementById('tdeModalTitle').textContent = mode === 'new' ? 'Nuevo tipo' : 'Editar tipo';
+  var meta = row ? row.querySelector('[data-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/tipo-dia-especial/nuevo/' : '/configuracion/tipo-dia-especial/' + meta.dataset.id + '/editar/';
+  document.getElementById('tde_nombre').value = meta ? meta.dataset.nombre : '';
+  document.getElementById('tde_categoria').value = meta ? meta.dataset.categoria : 'anotacion';
+  document.getElementById('tde_urgente').checked = meta ? meta.dataset.urgente === 'true' : false;
+  document.getElementById('tde_cuenta_para_sla').checked = meta ? meta.dataset.cuentaSla === 'true' : false;
+  onTipoCategoriaChange();
+  _setColor('tde_colorPicker', 'tdeModalStripe', meta ? meta.dataset.color : '');
+  modal.classList.add('open');
+}
+
+function setDiaColorFromSelect() {
+  var opt = document.getElementById('de_tipo').selectedOptions[0];
+  if (opt) _setColor('de_colorPicker', 'deModalStripe', opt.dataset.color);
+}
+
+function openDiaModal(mode, row) {
+  var modal = document.getElementById('diaModal');
+  var form  = document.getElementById('deModalForm');
+  document.getElementById('deModalTitle').textContent = mode === 'new' ? 'Nuevo día especial' : 'Editar día especial';
+  var meta = row ? row.querySelector('[data-dia-id]') : null;
+  form.action = mode === 'new' ? '/configuracion/dia-especial/nuevo/' : '/configuracion/dia-especial/' + meta.dataset.diaId + '/editar/';
+  var sel = document.getElementById('de_tipo');
+  sel.value = meta ? meta.dataset.tipoValor : (sel.options[0] ? sel.options[0].value : '');
+  document.getElementById('de_fecha_inicio').value = meta ? meta.dataset.fechaInicio : '';
+  document.getElementById('de_fecha_fin').value = meta ? meta.dataset.fechaFin : '';
+  document.getElementById('de_nota').value = meta ? meta.dataset.nota : '';
+  if (meta) {
+    _setColor('de_colorPicker', 'deModalStripe', meta.dataset.color);
+  } else {
+    setDiaColorFromSelect();
+  }
+  modal.classList.add('open');
+}
+
+function openTextoModal(row) {
+  var meta = row.querySelector('[data-clave]');
+  var modal = document.getElementById('textoModal');
+  document.getElementById('textoModalForm').action = '/configuracion/texto/' + encodeURIComponent(meta.dataset.clave) + '/editar/';
+  document.getElementById('texto_clave_display').value = meta.dataset.clave;
+  document.getElementById('texto_valor').value = meta.dataset.valor;
+  modal.classList.add('open');
+}
+
+function filterTextos() {
+  var searchEl = document.getElementById('textoSearch');
+  var catEl = document.getElementById('textoCategoriaFilter');
+  if (!searchEl || !catEl) return;
+  var q = searchEl.value.toLowerCase().trim();
+  var cat = catEl.value;
+  var rows = document.querySelectorAll('.texto-row');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var matchesQ = !q || row.dataset.clave.indexOf(q) !== -1 || row.dataset.valor.indexOf(q) !== -1;
+    var matchesCat = !cat || row.dataset.categoria === cat;
+    var show = matchesQ && matchesCat;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('textoCount').textContent = visible + ' de ' + rows.length;
+}
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('textoTable')) filterTextos();
+});
+
+// ── widget "Pizarras sin guardar" (borradores de localStorage) ──────────────
+// Igual que core/templates/configuracion.html: puro cliente, sin nada de
+// servidor -- lee cualquier clave 'wb_draft_*' que haya dejado
+// static/js/whiteboard.js (autoguardado a los 3s de inactividad).
+(function() {
+  var section = document.getElementById('wbDraftsSection');
+  var table = document.getElementById('wbDraftsTable');
+  if (!section || !table) return;
+
+  var drafts = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (!key || key.indexOf('wb_draft_') !== 0) continue;
+      var data;
+      try { data = JSON.parse(localStorage.getItem(key)); } catch (e) { continue; }
+      drafts.push({ key: key, wbId: key.slice('wb_draft_'.length), titulo: (data && data.titulo) || '(sin título)', ts: (data && data.ts) || 0 });
+    }
+  } catch (e) { return; }
+
+  if (!drafts.length) return;
+  drafts.sort(function(a, b) { return b.ts - a.ts; });
+  section.hidden = false;
+
+  drafts.forEach(function(d) {
+    var row = document.createElement('div');
+    row.className = 'config-row';
+    var fecha = d.ts ? new Date(d.ts).toLocaleString('es-ES') : '';
+    var editUrl = (d.wbId === 'nuevo' ? '/whiteboard/nuevo/' : '/whiteboard/' + d.wbId + '/editar/') + '?restaurar_borrador=1';
+
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'config-name';
+    nameSpan.textContent = d.titulo;
+
+    var metaSpan = document.createElement('span');
+    metaSpan.className = 'config-meta';
+    metaSpan.textContent = fecha;
+
+    var actions = document.createElement('span');
+    actions.className = 'config-actions';
+
+    var restoreLink = document.createElement('a');
+    restoreLink.href = editUrl;
+    restoreLink.title = 'Restaurar';
+    restoreLink.textContent = '↺';
+
+    var discardBtn = document.createElement('span');
+    discardBtn.title = 'Descartar';
+    discardBtn.style.cursor = 'pointer';
+    discardBtn.textContent = '✕';
+    discardBtn.addEventListener('click', function() {
+      try { localStorage.removeItem(d.key); } catch (e) {}
+      row.remove();
+      if (!table.children.length) section.hidden = true;
+    });
+
+    actions.appendChild(restoreLink);
+    actions.appendChild(discardBtn);
+    row.appendChild(nameSpan);
+    row.appendChild(metaSpan);
+    row.appendChild(actions);
+    table.appendChild(row);
+  });
+})();
+
+// ── Recordatorio: filtro y edicion en linea de la lista de mensajes ──
+function recFiltrar() {
+  const input = document.getElementById('recFiltro');
+  if (!input) return;
+  const q = input.value.trim().toLowerCase();
+  let n = 0;
+  document.querySelectorAll('.rec-row').forEach(r => {
+    const ok = !q || r.dataset.texto.includes(q);
+    r.style.display = ok ? '' : 'none';
+    if (ok) n++;
+  });
+  document.getElementById('recCount').textContent = q ? n + ' resultado(s)' : '';
+}
+function recEditar(id) {
+  const form = document.getElementById('recEdit' + id);
+  const texto = document.getElementById('recTexto' + id);
+  form.hidden = !form.hidden;
+  texto.hidden = !form.hidden;
+}
+
+// ── avisos de escritorio: el icono se aplica nada mas elegirlo ──
+// Antes elegir el archivo no hacia nada visible (habia que pulsar "Aplicar"
+// y la vista previa seguia en "—"), y parecia que no funcionaba. Ahora se
+// ve al momento y el formulario se envia solo.
+function escIconoElegido(campo) {
+  var form = campo.form, fila = form.closest('.esc-icono-row, .config-row');
+  var previa = fila && fila.querySelector('.esc-icono');
+  var url = '';
+  if (campo.type === 'file') {
+    if (!campo.files.length) return;
+    if (campo.files[0].size > 2 * 1024 * 1024) { alert('La imagen pesa más de 2 MB.'); campo.value = ''; return; }
+    url = URL.createObjectURL(campo.files[0]);
+  } else if (campo.value) {
+    url = '/configuracion/escritorio/icono/' + encodeURIComponent(campo.value);
+  }
+  if (previa) {
+    var img = document.createElement('img');
+    img.className = 'esc-icono'; img.alt = '';
+    if (url) { img.src = url; previa.replaceWith(img); }
+  }
+  var boton = form.querySelector('button[type=submit]');
+  if (boton) { boton.disabled = true; boton.textContent = 'Guardando…'; }
+  form.submit();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends "_base.html" %}
+{% block title %}Backlog — {{ proyecto.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .card-btn { background: var(--bg); border: 1px solid var(--border); color: var(--ink); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+  .backlog-content { flex: 1; overflow-y: auto; padding: 20px; }
+  .backlog-header { margin-bottom: 14px; }
+  .backlog-title { font-size: 16px; font-weight: 700; }
+  .backlog-count { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .backlog-desc { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .backlog-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .backlog-table th { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border); background: var(--panel); text-transform: uppercase; }
+  .backlog-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .backlog-table tr:hover td { background: var(--bg); }
+  .backlog-order { color: var(--muted); font-size: 12px; }
+  .backlog-task-title { font-weight: 600; }
+  .backlog-next { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .backlog-status-chip { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; background: var(--color-orange-tint); color: var(--color-orange-dark); }
+  .backlog-status-chip[data-status="En curso"]  { background: var(--color-blue-tint); color: var(--color-blue-dark); }
+  .backlog-status-chip[data-status="En espera"] { background: var(--color-amber-tint); color: var(--color-amber-dark); }
+  .backlog-status-chip[data-status="Hecha"]     { background: var(--color-green-tint); color: var(--color-green-dark); }
+  .backlog-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 60px 20px; color: var(--muted); font-size: 14px; }
+  .backlog-empty svg { opacity: .4; }
+  .backlog-assign-form { display: inline-flex; align-items: center; gap: 6px; }
+  .backlog-assign-select { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 92vw; }
+  .modal-lg { width: 620px; }
+  .modal-stripe { height: 6px; }
+  .modal-body { padding: 20px 24px; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  input[type=text], input[type=file], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .input-lg { font-size: 16px; font-weight: 700; padding: 10px 12px; }
+  .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc">{{ proyecto.descripcion }}</p>{% endif %}
+    <div class="project-meta-row"><span class="proj-status-badge" data-estado="{{ proyecto.estado }}">{{ proyecto.estado }}</span></div>
+  </div>
+  <div class="project-header-right">
+    <button class="btn-secondary" type="button" onclick="document.getElementById('importExcelModal').classList.add('open')">Importar Excel</button>
+    <button class="btn-primary" type="button" onclick="document.getElementById('taskModal').classList.add('open')">+ Nueva tarea</button>
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="backlog-content">
+  <div class="backlog-header">
+    <h2 class="backlog-title">Backlog <span class="backlog-count">{{ backlog|length }} tareas</span></h2>
+    <p class="backlog-desc">Tareas sin sprint asignado.</p>
+  </div>
+
+  {% if backlog %}
+  <table class="backlog-table">
+    <thead>
+      <tr><th>#</th><th>Título</th><th>Estado</th><th>Prioridad</th><th>Categoría</th><th>Asignar a sprint</th></tr>
+    </thead>
+    <tbody>
+      {% for task in backlog %}
+      <tr>
+        <td class="backlog-order">{{ task.orden }}</td>
+        <td>
+          <span class="backlog-task-title">{{ task.title }}</span>
+          {% if task.next_step %}<div class="backlog-next">{{ task.next_step }}</div>{% endif %}
+        </td>
+        <td><span class="backlog-status-chip" data-status="{{ task.status }}">{{ task.status }}</span></td>
+        <td>{{ task.priority }}</td>
+        <td>{{ task.category }}</td>
+        <td>
+          {% if open_sprints %}
+          <form method="post" class="backlog-assign-form" onsubmit="this.action='/sprint/'+this.querySelector('select').value+'/tarea/anadir/'">{{ csrf_field() }}
+            <input type="hidden" name="task_id" value="{{ task.task_id }}">
+            <select class="backlog-assign-select">
+              {% for sp in open_sprints %}<option value="{{ sp.sprint_id }}">{{ sp.nombre }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="card-btn">Asignar</button>
+          </form>
+          {% else %}
+          <span style="color:#9ca3af;font-size:12px">Sin sprints abiertos</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="backlog-empty">
+    {{ icon("list", 32) }}
+    <p>El backlog está vacío. Todas las tareas tienen sprint asignado o no hay tareas.</p>
+    <button class="btn-primary" type="button" onclick="document.getElementById('taskModal').classList.add('open')">+ Nueva tarea</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- MODAL: importar tareas desde Excel -->
+<div class="modal-overlay" id="importExcelModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title">Importar tareas desde Excel</h3>
+      <form id="importExcelForm">
+        <div class="form-group">
+          <label>ARCHIVO (.xlsx)</label>
+          <input type="file" name="excel_tareas" id="ie_file" accept=".xlsx" required>
+          <div class="form-hint">Cada fila se crea como una tarea en "Pendiente". Máximo {{ import_max_rows }} filas por importación.
+            <a href="/excel/plantilla-importar-tareas/" target="_blank">Descargar plantilla</a>.</div>
+        </div>
+        <div class="form-group">
+          <label>SPRINT DESTINO <span style="font-weight:400;text-transform:none">(opcional)</span></label>
+          <select name="sprint_id" id="ie_sprint">
+            <option value="">— Backlog (sin sprint) —</option>
+            {% for sp in open_sprints %}<option value="{{ sp.sprint_id }}">{{ sp.nombre }} ({{ sp.estado }})</option>{% endfor %}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('importExcelModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: tarea rapida -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal modal-lg">
+    <div class="modal-stripe" style="background:{{ proyecto.color }}"></div>
+    <div class="modal-body">
+      <h3 class="modal-title">Nueva tarea</h3>
+      <form method="post" action="/proyecto/{{ proyecto.id }}/tarea/nueva/">{{ csrf_field() }}
+        <div class="form-group"><label>TÍTULO</label><input type="text" name="title" class="input-lg" required></div>
+        <div class="form-row">
+          <div class="form-group"><label>CATEGORÍA</label>
+            <select name="category">{% for c in proj_cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group"><label>ESTADO</label>
+            <select name="status">{% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group"><label>PRIORIDAD</label>
+            <select name="priority">{% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <div class="form-group"><label>DESCRIPCIÓN</label><textarea name="description" rows="3"></textarea></div>
+        <div class="form-group"><label>PRÓXIMO PASO</label><textarea name="next_step" rows="2"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(function(el) {
+  el.addEventListener('click', function(e) { if (e.target === this) closeModal(this.id); });
+});
+
+document.getElementById('importExcelForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var fd = new FormData();
+  fd.append('excel_tareas', document.getElementById('ie_file').files[0]);
+  fd.append('sprint_id', document.getElementById('ie_sprint').value);
+  fetch('/proyecto/{{ proyecto.id }}/backlog/importar-excel/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { alert(d.error || 'No se pudo importar el Excel'); return; }
+      var msg = d.importadas + ' tareas importadas.';
+      if (d.avisos && d.avisos.length) msg += '\n\n' + d.avisos.length + ' avisos:\n' + d.avisos.slice(0, 8).join('\n');
+      alert(msg);
+      location.reload();
+    })
+    .catch(function() { alert('No se pudo importar el Excel'); });
+});
+</script>
+{% endblock %}

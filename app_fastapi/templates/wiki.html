@@ -1,0 +1,309 @@
+{% extends "_base.html" %}
+{% block title %}Wiki — {{ proyecto.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root { --text: var(--ink); --text-muted: var(--muted); --accent: var(--color-blue); --bg-alt: #f8fafc; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+
+  .wiki-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  .wiki-sidebar { width: 240px; flex-shrink: 0; background: var(--bg-alt); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .wiki-sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+  .wiki-sidebar-label { font-size: 13px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .wiki-new-page-btn { width: 26px; height: 26px; border-radius: 6px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; text-decoration: none; transition: opacity .15s; }
+  .wiki-new-page-btn:hover { opacity: .85; }
+  .wiki-nav { flex: 1; overflow-y: auto; padding: 8px 0 16px; }
+  .wiki-nav-empty { padding: 12px 16px; font-size: 12px; color: #9ca3af; font-style: italic; }
+
+  .wiki-tree-row { display: flex; align-items: center; gap: 2px; padding: 0 8px; min-height: 32px; }
+  .wiki-tree-toggle { background: none; border: none; cursor: pointer; font-size: 9px; color: #9ca3af; padding: 2px 4px; border-radius: 3px; flex-shrink: 0; line-height: 1; transition: color .1s; }
+  .wiki-tree-toggle:hover { color: var(--text); background: var(--border); }
+  .wiki-tree-spacer { width: 20px; flex-shrink: 0; }
+  .wiki-tree-link { display: flex; align-items: center; gap: 6px; flex: 1; padding: 4px 6px; border-radius: 6px; text-decoration: none; color: var(--text-muted); font-size: 13px; transition: background .1s, color .1s; overflow: hidden; white-space: nowrap; }
+  .wiki-tree-link:hover { background: var(--border); color: var(--text); }
+  .wiki-tree-icon { flex-shrink: 0; font-size: 14px; }
+  .wiki-tree-label { overflow: hidden; text-overflow: ellipsis; }
+  .wiki-tree-active > .wiki-tree-row > .wiki-tree-link { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+  .wiki-tree-children { display: none; padding-left: 18px; }
+  .wiki-tree-children.open { display: block; }
+
+  .wiki-main { flex: 1; overflow-y: auto; padding: 32px 48px 64px; max-width: 860px; width: 100%; }
+  @media (max-width: 900px) { .wiki-main { padding: 20px 20px 40px; } }
+
+  .wiki-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 12px; color: #9ca3af; margin-bottom: 20px; }
+  .wiki-breadcrumb a { color: #6b7280; text-decoration: none; }
+  .wiki-breadcrumb a:hover { color: var(--accent); text-decoration: underline; }
+  .wiki-bc-sep { color: #d1d5db; }
+  .wiki-bc-current { color: var(--text); font-weight: 600; }
+
+  .wiki-page-hero { margin-bottom: 4px; }
+  .wiki-page-icon-big { font-size: 52px; line-height: 1; margin-bottom: 8px; }
+  .wiki-page-title { font-size: 32px; font-weight: 800; line-height: 1.2; color: var(--text); margin: 0 0 12px; }
+  .wiki-page-meta-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #9ca3af; }
+  .wiki-page-btns { display: flex; gap: 6px; margin-left: auto; }
+  .wiki-action-btn { padding: 5px 10px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--bg); color: var(--text-muted); text-decoration: none; cursor: pointer; transition: background .12s, border-color .12s; display: inline-flex; align-items: center; gap: 4px; }
+  .wiki-action-btn:hover { background: var(--bg-alt); border-color: #9ca3af; }
+  .wiki-action-edit { color: var(--color-blue); border-color: #bfdbfe; }
+  .wiki-action-edit:hover { background: var(--color-blue-tint); }
+  .wiki-action-delete { color: var(--color-red); border-color: #fecaca; }
+  .wiki-action-delete:hover { background: #fef2f2; }
+  .wiki-page-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0 28px; }
+
+  .wiki-content { font-size: 15px; line-height: 1.75; color: var(--text); }
+  .wiki-content > * + * { margin-top: 12px; }
+  .wk-h { font-weight: 700; line-height: 1.3; margin: 28px 0 6px; }
+  .wk-h1 { font-size: 28px; } .wk-h2 { font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .wk-h3 { font-size: 18px; } .wk-h4 { font-size: 15px; }
+  .wk-p { margin: 0; }
+  .wk-list { padding-left: 22px; margin: 4px 0; }
+  .wk-list li + li { margin-top: 4px; }
+  .wk-checklist { list-style: none; padding: 0; margin: 4px 0; }
+  .wk-check-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--text); }
+  .wk-check-box { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 11px; margin-top: 1px; background: var(--bg); }
+  .wk-check-done .wk-check-box { background: #16a34a; border-color: #16a34a; color: #fff; }
+  .wk-check-done { color: #9ca3af; text-decoration: line-through; }
+  .wk-code { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 16px 20px; font-family: monospace; font-size: 13px; line-height: 1.6; overflow-x: auto; margin: 12px 0; }
+  .wk-quote { border-left: 4px solid var(--accent); margin: 12px 0; padding: 10px 16px; background: #eff6ff; border-radius: 0 8px 8px 0; }
+  .wk-quote p { margin: 0; font-style: italic; color: var(--text); }
+  .wk-quote cite { font-size: 12px; color: #6b7280; margin-top: 4px; display: block; }
+  .wk-delimiter { text-align: center; color: #9ca3af; letter-spacing: 8px; margin: 24px 0; font-size: 14px; }
+  .wk-table-wrap { overflow-x: auto; margin: 12px 0; }
+  .wk-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .wk-table th, .wk-table td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  .wk-table th { background: var(--bg-alt); font-weight: 600; }
+  .wk-table tr:nth-child(even) td { background: #fafafa; }
+  .wk-image { margin: 16px 0; }
+  .wk-image img { max-width: 100%; border-radius: 8px; display: block; }
+  .wk-image figcaption { font-size: 12px; color: #9ca3af; margin-top: 6px; text-align: center; }
+  .wk-img-border img { border: 1px solid var(--border); }
+  .wk-img-bg { background: var(--bg-alt); padding: 16px; border-radius: 8px; }
+  .wk-img-stretch img { width: 100%; }
+  .wk-warning { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .wk-warning strong { color: #92400e; display: block; margin-bottom: 4px; }
+  .wk-warning p { margin: 0; color: #78350f; font-size: 14px; }
+  /* Bloque "vivo" (tareasVivas, ver wiki_store.py::render_content) -- se
+     consulta a la BD en el momento de ver la pagina, nunca se guarda un
+     snapshot de las tareas dentro del contenido JSON. */
+  .wk-tareas-vivas { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .wk-tareas-vivas-titulo { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 6px; }
+  .wk-tareas-vivas-empty { margin: 0; font-size: 13px; color: #9ca3af; }
+  .wk-tareas-vivas-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  .wk-tareas-vivas-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; }
+  .wk-tareas-vivas-list a { color: var(--accent); text-decoration: none; }
+  .wk-tareas-vivas-list a:hover { text-decoration: underline; }
+  .wk-tareas-vivas-estado { font-size: 11px; color: #9ca3af; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+
+  .wiki-subpages { margin-top: 40px; }
+  .wiki-subpages-title { font-size: 13px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+  .wiki-subpages-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .wiki-subpage-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; background: var(--bg); transition: border-color .15s, box-shadow .15s; }
+  .wiki-subpage-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(37,99,235,.08); }
+  .wiki-subpage-icon { font-size: 20px; }
+  .wiki-subpage-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .wiki-subpage-date { font-size: 11px; color: #9ca3af; }
+
+  .wiki-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 60px 20px 40px; }
+  .wiki-welcome-icon { font-size: 64px; margin-bottom: 16px; }
+  .wiki-welcome-title { font-size: 26px; font-weight: 800; color: var(--text); margin: 0 0 10px; }
+  .wiki-welcome-sub { font-size: 15px; color: #6b7280; max-width: 440px; margin: 0 0 24px; line-height: 1.6; }
+  .wiki-recent-section { margin-top: 48px; width: 100%; max-width: 680px; text-align: left; }
+  .wiki-recent-title { font-size: 13px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+  .wiki-recent-grid { display: flex; flex-direction: column; gap: 6px; }
+  .wiki-recent-card { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; background: var(--bg); transition: border-color .15s; }
+  .wiki-recent-card:hover { border-color: var(--accent); }
+  .wiki-recent-icon { font-size: 18px; flex-shrink: 0; }
+  .wiki-recent-info { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+  .wiki-recent-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .wiki-recent-date { font-size: 11px; color: #9ca3af; }
+  .wiki-empty-page { text-align: center; padding: 60px 20px; color: #9ca3af; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 90vw; }
+  .modal-body { padding: 20px 24px; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  input[type=file] { font-size: 13px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% macro render_tree(nodes, project_id, current_page) %}
+{% for node in nodes %}
+<div class="wiki-tree-item{% if current_page and node.page_id == current_page.page_id %} wiki-tree-active{% endif %}">
+  <div class="wiki-tree-row">
+    {% if node.children %}
+    <button class="wiki-tree-toggle" onclick="toggleWikiNode(this)" type="button">▶</button>
+    {% else %}
+    <span class="wiki-tree-spacer"></span>
+    {% endif %}
+    <a href="/proyecto/{{ project_id }}/wiki/{{ node.page_id }}/" class="wiki-tree-link">
+      <span class="wiki-tree-icon">{{ node.icon }}</span>
+      <span class="wiki-tree-label">{{ node.title }}</span>
+    </a>
+  </div>
+  {% if node.children %}
+  <div class="wiki-tree-children{% if current_page and node.page_id == current_page.page_id %} open{% endif %}">
+    {{ render_tree(node.children, project_id, current_page) }}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endmacro %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <a href="/proyecto/{{ proyecto.id }}/">{{ proyecto.nombre }}</a> › <span class="breadcrumb-current">Wiki</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc">{{ proyecto.descripcion }}</p>{% endif %}
+  </div>
+  <div class="project-header-right">
+    <button type="button" class="btn-secondary" onclick="document.getElementById('importWordModal').classList.add('open')">Importar desde Word</button>
+    <a href="/proyecto/{{ proyecto.id }}/wiki/nueva/{% if current_page %}?parent={{ current_page.page_id }}{% endif %}" class="btn-primary">+ Nueva página</a>
+  </div>
+</div>
+
+<!-- MODAL: importar pagina desde Word -->
+<div class="modal-overlay" id="importWordModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title">Importar desde Word</h3>
+      <form method="post" action="/proyecto/{{ proyecto.id }}/wiki/importar-word/" enctype="multipart/form-data">{{ csrf_field() }}
+        <input type="hidden" name="parent_id" value="{% if current_page %}{{ current_page.page_id }}{% endif %}">
+        <div class="form-group">
+          <label>ARCHIVO .DOCX</label>
+          <input type="file" name="docx_file" accept=".docx" required>
+          <div class="form-hint">Los encabezados, listas, tablas y negrita/cursiva se convierten a bloques del editor. Revisa el resultado antes de guardar.</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('importWordModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="wiki-layout">
+  <aside class="wiki-sidebar">
+    <div class="wiki-sidebar-top">
+      <span class="wiki-sidebar-label">{{ icon("book-open", 13) }} Wiki</span>
+      <a href="/proyecto/{{ proyecto.id }}/wiki/nueva/" class="wiki-new-page-btn" title="Nueva página">＋</a>
+    </div>
+    <nav class="wiki-nav">
+      {% if wiki_tree %}{{ render_tree(wiki_tree, proyecto.id, current_page) }}
+      {% else %}<p class="wiki-nav-empty">Aún no hay páginas.</p>{% endif %}
+    </nav>
+  </aside>
+
+  <main class="wiki-main">
+    {% if current_page %}
+    <nav class="wiki-breadcrumb">
+      <a href="/proyecto/{{ proyecto.id }}/wiki/">Wiki</a>
+      {% for p in breadcrumb %}
+      <span class="wiki-bc-sep">›</span>
+      {% if loop.last %}<span class="wiki-bc-current">{{ p.icon }} {{ p.title }}</span>
+      {% else %}<a href="/proyecto/{{ proyecto.id }}/wiki/{{ p.page_id }}/">{{ p.icon }} {{ p.title }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+
+    <div class="wiki-page-hero">
+      <div class="wiki-page-icon-big">{{ current_page.icon }}</div>
+      <h1 class="wiki-page-title">{{ current_page.title }}</h1>
+      <div class="wiki-page-meta-row">
+        <span>Actualizada {{ current_page.updated_at }}</span><span>·</span><span>Creada {{ current_page.created_at }}</span>
+        <div class="wiki-page-btns">
+          <a href="/proyecto/{{ proyecto.id }}/wiki/nueva/?parent={{ current_page.page_id }}" class="wiki-action-btn">＋ Subpágina</a>
+          <a href="/proyecto/{{ proyecto.id }}/wiki/{{ current_page.page_id }}/editar/" class="wiki-action-btn wiki-action-edit">{{ icon("edit-2", 13) }} Editar</a>
+          <form method="post" action="/proyecto/{{ proyecto.id }}/wiki/{{ current_page.page_id }}/eliminar/" style="display:inline" id="wikiPageDeleteForm"
+                onsubmit="event.preventDefault(); showConfirm('¿Eliminar «{{ current_page.title }}»? Las subpáginas pasarán a la raíz.', function(){ document.getElementById('wikiPageDeleteForm').submit(); }, {title:'Eliminar página', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+            <button type="submit" class="wiki-action-btn wiki-action-delete">{{ icon("trash-2", 13) }}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <hr class="wiki-page-divider">
+
+    {% if page_html %}
+    <div class="wiki-content">{{ page_html|safe }}</div>
+    {% else %}
+    <div class="wiki-empty-page">
+      <p>Esta página todavía no tiene contenido.</p>
+      <a href="/proyecto/{{ proyecto.id }}/wiki/{{ current_page.page_id }}/editar/" class="btn-primary">Añadir contenido</a>
+    </div>
+    {% endif %}
+
+    {% if current_page.children %}
+    <div class="wiki-subpages">
+      <h3 class="wiki-subpages-title">Subpáginas</h3>
+      <div class="wiki-subpages-grid">
+        {% for child in current_page.children %}
+        <a href="/proyecto/{{ proyecto.id }}/wiki/{{ child.page_id }}/" class="wiki-subpage-card">
+          <span class="wiki-subpage-icon">{{ child.icon }}</span>
+          <span class="wiki-subpage-name">{{ child.title }}</span>
+          <span class="wiki-subpage-date">{{ child.updated_at }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="wiki-welcome">
+      <div class="wiki-welcome-icon">{{ icon("book-open", 40) }}</div>
+      <h2 class="wiki-welcome-title">Wiki de {{ proyecto.nombre }}</h2>
+      <p class="wiki-welcome-sub">Documentación, notas y procedimientos de este proyecto, organizados en páginas y subpáginas.</p>
+      <a href="/proyecto/{{ proyecto.id }}/wiki/nueva/" class="btn-primary">Crear la primera página →</a>
+
+      {% if wiki_pages %}
+      <div class="wiki-recent-section">
+        <h3 class="wiki-recent-title">Páginas recientes</h3>
+        <div class="wiki-recent-grid">
+          {% for p in wiki_pages[:8] %}
+          <a href="/proyecto/{{ proyecto.id }}/wiki/{{ p.page_id }}/" class="wiki-recent-card">
+            <span class="wiki-recent-icon">{{ p.icon }}</span>
+            <div class="wiki-recent-info"><span class="wiki-recent-name">{{ p.title }}</span><span class="wiki-recent-date">{{ p.updated_at }}</span></div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </main>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.getElementById('importWordModal').addEventListener('click', function(e) { if (e.target === this) closeModal('importWordModal'); });
+
+function toggleWikiNode(btn) {
+  var children = btn.closest('.wiki-tree-row').nextElementSibling;
+  if (!children) return;
+  var open = children.classList.toggle('open');
+  btn.textContent = open ? '▼' : '▶';
+}
+document.querySelectorAll('.wiki-tree-active').forEach(function(el) {
+  var parent = el.parentElement;
+  while (parent) {
+    if (parent.classList.contains('wiki-tree-children')) {
+      parent.classList.add('open');
+      var btn = parent.previousElementSibling && parent.previousElementSibling.querySelector('.wiki-tree-toggle');
+      if (btn) btn.textContent = '▼';
+    }
+    parent = parent.parentElement;
+  }
+});
+</script>
+{% endblock %}

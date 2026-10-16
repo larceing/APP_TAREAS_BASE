@@ -1,0 +1,160 @@
+{% extends "_base.html" %}
+{% block title %}{{ reunion.titulo }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+  select.select-inline { padding: 6px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); }
+  input[type="text"] { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--panel); color: var(--ink); }
+
+  .notas-page { padding: 16px 20px; }
+
+  .reunion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .reunion-grid { grid-template-columns: 1fr; } }
+  .reunion-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 18px 20px; }
+  .reunion-panel-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 14px; }
+  .reunion-inline-form { display: flex; gap: 6px; margin-bottom: 14px; }
+  .reunion-inline-form input[type="text"] { flex: 1; }
+  .reunion-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: var(--muted); text-align: center; }
+  .reunion-empty svg { opacity: .35; }
+  .reunion-empty-text { color: var(--muted); font-size: 13px; text-align: center; padding: 12px 0; margin: 0; }
+  .reunion-list { display: flex; flex-direction: column; gap: 2px; }
+  .reunion-list-item { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-radius: var(--radius-sm); font-size: 13px; color: var(--ink); text-decoration: none; cursor: pointer; transition: background .12s; }
+  .reunion-list-item:hover { background: var(--bg); }
+  .reunion-list-item input[type="checkbox"] { flex-shrink: 0; }
+  .reunion-list-text { flex: 1; word-break: break-word; }
+  .reunion-list-item-done .reunion-list-text { text-decoration: line-through; color: var(--muted); }
+  .reunion-list-meta { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+  .whiteboard-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; cursor: pointer; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
+  .whiteboard-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .whiteboard-card-thumb { aspect-ratio: 16/10; background: var(--bg); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); overflow: hidden; }
+  .whiteboard-card-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .whiteboard-card-thumb svg { opacity: .3; }
+  .whiteboard-card-thumb-blank { background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 14px 14px; }
+  .whiteboard-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .whiteboard-card-title { font-weight: 700; font-size: 13px; word-break: break-word; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="breadcrumb">
+  <a href="/calendario/">Calendario</a> › <span class="breadcrumb-current">{{ reunion.titulo }}</span>
+</div>
+<div class="project-header">
+  <div class="project-header-left">
+    <h1 class="project-title">{{ icon("calendar", 20) }} {{ reunion.titulo }}</h1>
+    <p class="project-desc">
+      {{ reunion.fecha_inicio }}{% if reunion.fecha_fin %} – {{ reunion.fecha_fin }}{% endif %}
+      {% if reunion.ubicacion %} · {{ reunion.ubicacion }}{% endif %}
+    </p>
+  </div>
+  {% if reunion.enlace_teams %}
+  <div class="project-header-right">
+    <a href="{{ reunion.enlace_teams }}" target="_blank" rel="noopener" class="btn-primary">Unirse en Teams</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="notas-page">
+  <div class="reunion-grid">
+
+    <!-- PIZARRA -->
+    <div class="reunion-panel">
+      <h2 class="reunion-panel-title">{{ icon("pen-tool", 15) }} Whiteboard</h2>
+      {% if whiteboard_vinculada %}
+      <div class="whiteboard-card" onclick="location.href='/whiteboard/{{ whiteboard_vinculada.whiteboard_id }}/editar/'">
+        <div class="whiteboard-card-thumb{% if not whiteboard_vinculada.thumbnail %} whiteboard-card-thumb-blank{% endif %}">
+          {% if whiteboard_vinculada.thumbnail %}
+          <img src="/whiteboard/{{ whiteboard_vinculada.whiteboard_id }}/imagen/" alt="{{ whiteboard_vinculada.titulo }}">
+          {% else %}
+          {{ icon("pen-tool", 32) }}
+          {% endif %}
+        </div>
+        <div class="whiteboard-card-body">
+          <span class="whiteboard-card-title">{{ whiteboard_vinculada.titulo }}</span>
+        </div>
+      </div>
+      {% else %}
+      <div class="reunion-empty">
+        {{ icon("pen-tool", 26) }}
+        <p>Todavía no hay un whiteboard para esta reunión.</p>
+        <a class="btn-primary btn-sm" href="/whiteboard/nuevo/?reunion_id={{ reunion.reunion_id }}">+ Crear whiteboard para esta reunión</a>
+        {% if whiteboards_disponibles %}
+        <form method="post" action="/reunion/{{ reunion.reunion_id }}/pizarra/vincular/" class="reunion-inline-form" style="margin-top:10px;">{{ csrf_field() }}
+          <select name="whiteboard_id" class="select-inline">
+            {% for w in whiteboards_disponibles %}
+            <option value="{{ w.whiteboard_id }}">{{ w.titulo }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-secondary btn-sm">Vincular</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- TAREAS -->
+    <div class="reunion-panel">
+      <h2 class="reunion-panel-title">{{ icon("check-circle", 15) }} Tareas de esta reunión</h2>
+      <form method="post" action="/reunion/{{ reunion.reunion_id }}/tarea/anadir/" class="reunion-inline-form">{{ csrf_field() }}
+        <input type="text" name="title" placeholder="Añadir una tarea…" required>
+        <button type="submit" class="btn-primary btn-sm">Añadir</button>
+      </form>
+      {% if tareas_reunion %}
+      <div class="reunion-list">
+        {% for item in tareas_reunion %}
+        <label class="reunion-list-item {% if item.hecha %}reunion-list-item-done{% endif %}">
+          <input type="checkbox" {% if item.hecha %}checked{% endif %}
+                 onchange="reunionToggleTarea('{{ item.task.task_id }}','{{ item.toggle_estado }}', this)">
+          <span class="reunion-list-text">{{ item.task.title }}</span>
+          <span class="reunion-list-meta">{{ item.task.status }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="reunion-empty-text">Todavía no hay tareas para esta reunión.</p>
+      {% endif %}
+    </div>
+
+    <!-- NOTAS -->
+    <div class="reunion-panel">
+      <h2 class="reunion-panel-title">{{ icon("file-text", 15) }} Notas de esta reunión</h2>
+      <form method="post" action="/reunion/{{ reunion.reunion_id }}/nota/anadir/" class="reunion-inline-form">{{ csrf_field() }}
+        <input type="text" name="titulo" placeholder="Añadir una nota…" required>
+        <button type="submit" class="btn-primary btn-sm">Añadir</button>
+      </form>
+      {% if notas_reunion %}
+      <div class="reunion-list">
+        {% for n in notas_reunion %}
+        <a href="/notas/" class="reunion-list-item">
+          <span class="reunion-list-text">{{ n.titulo }}</span>
+          <span class="reunion-list-meta">{{ n.actualizada_en }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="reunion-empty-text">Todavía no hay notas para esta reunión.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<script>
+function reunionToggleTarea(taskId, nuevoEstado, checkbox) {
+    checkbox.disabled = true;
+    fetch('/tarea/' + taskId + '/reordenar/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+        body: new URLSearchParams({ status: nuevoEstado, before_id: '' }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function () { location.reload(); })
+    .catch(function () { checkbox.disabled = false; });
+}
+</script>
+{% endblock %}

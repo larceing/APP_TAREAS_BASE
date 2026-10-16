@@ -1,0 +1,55 @@
+{% extends "_base.html" %}
+{% block title %}Token creado — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .page { padding: 24px 32px; max-width: 720px; }
+  .token-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-sm); }
+  .token-card h1 { font-size: 18px; margin: 0 0 8px; }
+  .token-card p { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+  .token-warning { background: #fef2f2; color: #991b1b; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12.5px; font-weight: 600; margin-bottom: 16px; }
+  .token-box { display: flex; gap: 8px; align-items: center; margin-bottom: 20px; }
+  .token-value { flex: 1; font-family: 'Consolas', monospace; font-size: 13px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; word-break: break-all; user-select: all; }
+  .token-sub { font-size: 14px; margin: 4px 0 6px; }
+  .token-agente { font-family: 'Consolas', monospace; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; white-space: pre-wrap; word-break: break-all; margin: 0 0 10px; user-select: all; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="token-card">
+    <h1>Token "{{ nombre }}" creado</h1>
+    <p>Cópialo ahora y guárdalo en un sitio seguro — no se volverá a mostrar. Si lo pierdes, tendrás que revocar este token y crear uno nuevo.</p>
+    <div class="token-warning">⚠ Este es el único momento en que verás el valor completo del token.</div>
+    <div class="token-box">
+      <code class="token-value" id="tokenValue">{{ token_plano }}</code>
+      <button type="button" class="btn-secondary" onclick="copiarToken()">Copiar</button>
+    </div>
+    <h2 class="token-sub">Para dárselo a Claude (u otro agente)</h2>
+    <p>Pega esto en la conversación, o guarda las dos primeras líneas en un <code>.env</code>. Con eso el agente lee el manual él solo y crea las tareas, notas o mensajes de muro que haga falta, firmados con tu nombre ("vía API: {{ nombre }}").</p>
+    <pre class="token-agente" id="tokenAgente">APP_TAREAS_API_URL={{ api_url }}
+APP_TAREAS_API_KEY={{ token_plano }}
+
+Usa la API de mi app de tareas. Empieza leyendo el manual:
+GET {{ api_url }}/manual  (cabecera X-API-Key con la clave de arriba)
+Sigue el "flujo de trabajo" del manual: consulta /dimensiones/ antes de crear nada,
+simula la importación, y no inventes proyectos, columnas ni usuarios.</pre>
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button type="button" class="btn-secondary" onclick="copiarBloque()">Copiar bloque</button>
+    </div>
+    <a href="/configuracion/?tipo=api" class="btn-primary">Volver a Configuración → API</a>
+  </div>
+</div>
+
+<script>
+function copiarBloque() {
+  navigator.clipboard.writeText(document.getElementById('tokenAgente').textContent).catch(function() {});
+}
+function copiarToken() {
+  var el = document.getElementById('tokenValue');
+  navigator.clipboard.writeText(el.textContent.trim()).catch(function() {});
+}
+</script>
+{% endblock %}

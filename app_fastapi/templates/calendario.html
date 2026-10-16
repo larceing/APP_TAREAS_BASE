@@ -1,0 +1,462 @@
+{% extends "_base.html" %}
+{% block title %}Calendario — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .page-header { display: flex; align-items: center; padding: 20px 32px; border-top: 4px solid var(--selected); background: var(--panel); border-bottom: 1px solid var(--border); }
+  .page-header h1 { font-size: 20px; margin: 0; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  input[type=text], input[type=date], input[type=number], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+
+  .cal-page { padding: 16px 20px; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .cal-nav { display: flex; align-items: center; gap: 6px; }
+  .cal-nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel); color: var(--ink); font-size: 20px; line-height: 1; transition: background .15s; }
+  .cal-nav-btn:hover { background: var(--bg); }
+  .cal-month-title { font-size: 17px; font-weight: 700; min-width: 170px; text-align: center; color: var(--ink); }
+  .cal-today-btn { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; font-weight: 600; transition: all .15s; }
+  .cal-today-btn:hover { border-color: var(--selected); color: var(--selected); }
+  .cal-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cal-filters select { width: auto; padding: 6px 10px; }
+  .cal-clear-btn { font-size: 12px; color: var(--muted); padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+  .cal-clear-btn:hover { background: var(--bg); color: var(--ink); }
+  .cal-view-toggle { display: flex; background: #e8edf5; border-radius: 6px; padding: 3px; gap: 2px; }
+  .cal-view-btn { padding: 5px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .cal-view-btn.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+  .cal-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--border); gap: 1px; align-items: stretch; }
+  .cal-week-col { position: relative; background: var(--panel); padding: 9px 8px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 420px; }
+  .cal-week-col-head { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; }
+  .cal-week-dow { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; text-decoration: none; }
+  .cal-week-dow:hover { color: var(--ink); }
+  .cal-week-daynum { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .cal-cell-today .cal-week-daynum { color: #2563eb; font-weight: 700; }
+  .cal-week-tags { display: flex; flex-direction: column; gap: 3px; }
+  .cal-week-tag { color: #fff; font-size: 11px; font-weight: 600; line-height: 1.4; padding: 3px 7px; border-radius: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-week-add-btn { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); border-radius: 4px; padding: 2px 4px; background: none; border: none; cursor: pointer; }
+  .cal-week-add-btn:hover { background: var(--bg); color: var(--ink); }
+  .cal-week-tasks { display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto; }
+  .cal-week-task-card { border-left: 3px solid #6b7280; border-radius: 6px; background: var(--bg); padding: 7px 9px; cursor: pointer; transition: filter .1s; }
+  .cal-week-task-card:hover { filter: brightness(.96); }
+  .cal-week-task-card.cal-chip-done { opacity: .55; }
+  .cal-week-task-top { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+  .cal-week-task-status { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .cal-week-prio { margin-left: auto; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; }
+  .cal-week-prio-alta { background: rgba(220,38,38,.15); color: #dc2626; }
+  .cal-week-task-title { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+  .cal-week-task-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .cal-week-task-next { font-size: 11px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-week-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 10px 0; }
+
+  /* reuniones sincronizadas (feed ICS, Configuracion -> Calendario externo) --
+     mismo tamaño que .cal-task-chip pero con acento violeta para distinguirlas
+     de un vistazo de las tareas propias de la app */
+  .cal-reuniones, .cal-week-reuniones { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+  .cal-reunion-chip { display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 3px; border-left: 3px solid var(--selected); background: rgba(124,58,237,.08); color: var(--ink); font-size: 11px; text-decoration: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .cal-reunion-chip:hover { filter: brightness(.95); cursor: pointer; }
+  .cal-reunion-chip svg { flex-shrink: 0; opacity: .7; }
+
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--border); gap: 1px; }
+  .cal-dow { background: var(--panel); padding: 8px 6px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+  .cal-dow-weekend { color: #dc2626; }
+  .cal-cell { position: relative; background: var(--panel); min-height: 108px; padding: 8px 6px 5px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+  .cal-cell-empty { background: var(--bg); min-height: 108px; }
+  .cal-cell-past { background: var(--panel); }
+  .cal-cell-past .cal-day-num { color: var(--muted); }
+  .cal-cell-today { background: #eff6ff; }
+  .cal-day-num { font-size: 12px; font-weight: 600; color: var(--ink); text-align: right; line-height: 1; cursor: pointer; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-left: auto; flex-shrink: 0; transition: background .15s, color .15s; text-decoration: none; }
+  .cal-day-num:hover { background: var(--border); }
+  .cal-day-add-btn { position: absolute; top: 6px; left: 6px; width: 16px; height: 16px; border-radius: 50%; border: none; background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+  .cal-cell:hover .cal-day-add-btn { opacity: 1; }
+  .cal-day-add-btn:hover { background: var(--border); color: var(--ink); }
+  .cal-cell-today .cal-day-num { background: #2563eb; color: #fff; }
+  .cal-cell-today .cal-day-num:hover { background: #1d4ed8; }
+  .cal-sede-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+  .cal-aviso-ribbon { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; opacity: .6; }
+  .cal-dots { position: absolute; top: 5px; right: 5px; display: flex; gap: 3px; }
+  .cal-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .cal-day-urgent { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; background: #dc2626; color: #fff; font-weight: 800; font-size: 9px; margin-right: 3px; }
+  .cal-tasks { display: flex; flex-direction: column; gap: 2px; }
+  .cal-task-chip { display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 3px; border-left: 3px solid #6b7280; background: var(--bg); color: var(--ink); font-size: 11px; cursor: pointer; transition: filter .1s; overflow: hidden; }
+  .cal-task-chip:hover { filter: brightness(.95); }
+  .cal-chip-done { opacity: .5; }
+  .cal-chip-alta { font-weight: 600; }
+  .cal-chip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--color-orange); }
+  .cal-chip-dot[data-status="En curso"] { background: var(--color-blue); }
+  .cal-chip-dot[data-status="En espera"] { background: var(--color-amber); }
+  .cal-chip-dot[data-status="Hecha"] { background: var(--color-green); }
+  .cal-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .cal-chip-pin { flex-shrink: 0; color: var(--selected); font-size: 10px; }
+  .cal-overflow { font-size: 10px; color: var(--muted); text-align: center; padding: 1px 4px; cursor: default; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 660px; max-width: 92vw; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+  .modal-stripe { height: 6px; flex-shrink: 0; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-row { display: flex; gap: 10px; }
+  .form-row .form-group { flex: 1; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+  .subtask-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .subtask-row { display: flex; align-items: center; gap: 6px; }
+  .subtask-check { width: 15px; height: 15px; flex-shrink: 0; }
+  .subtask-text { flex: 1; font-size: 13px; padding: 3px 6px; }
+  .subtask-del { background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 2px; }
+  .subtask-del:hover { color: var(--color-red); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1 style="display:flex;align-items:center;gap:8px;">{{ icon("calendar", 20) }} Calendario</h1></div>
+
+<div class="cal-page">
+  <div class="cal-header">
+    <div class="cal-nav">
+      {% if vista == 'semana' %}
+      <a class="cal-nav-btn" title="Semana anterior" href="?vista=semana&amp;ref_date={{ prev_ref }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">‹</a>
+      <span class="cal-month-title">{{ week_title }}</span>
+      <a class="cal-nav-btn" title="Semana siguiente" href="?vista=semana&amp;ref_date={{ next_ref }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">›</a>
+      <a class="cal-today-btn" href="?vista=semana&amp;ref_date={{ today_str }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">Hoy</a>
+      {% else %}
+      <a class="cal-nav-btn" title="Mes anterior" href="?year={{ prev_year }}&amp;month={{ prev_month }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">‹</a>
+      <span class="cal-month-title">{{ month_name }} {{ year }}</span>
+      <a class="cal-nav-btn" title="Mes siguiente" href="?year={{ next_year }}&amp;month={{ next_month }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">›</a>
+      <a class="cal-today-btn" href="?year={{ today_year }}&amp;month={{ today_month }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">Hoy</a>
+      {% endif %}
+    </div>
+
+    <div class="cal-view-toggle">
+      <a class="cal-view-btn {% if vista == 'mes' %}active{% endif %}" href="?vista=mes&amp;year={{ year }}&amp;month={{ month }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">Mes</a>
+      <a class="cal-view-btn {% if vista == 'semana' %}active{% endif %}" href="?vista=semana&amp;ref_date={{ ref_date }}{% if active_project %}&amp;project={{ active_project }}{% endif %}{% if category_filter %}&amp;category={{ category_filter }}{% endif %}">Semana</a>
+    </div>
+
+    <form method="get" id="calFilterForm" class="cal-filters">
+      <input type="hidden" name="vista" value="{{ vista }}">
+      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="month" value="{{ month }}">
+      <input type="hidden" name="ref_date" value="{{ ref_date }}">
+      <select name="project" onchange="document.getElementById('calFilterForm').submit()">
+        <option value="">Todos los proyectos</option>
+        {% for p in proyectos %}<option value="{{ p.id }}" {% if p.id == active_project %}selected{% endif %}>{{ p.nombre }}</option>{% endfor %}
+      </select>
+      {% if proj_cats %}
+      <select name="category" onchange="this.form.submit()">
+        <option value="">Todas las categorías</option>
+        {% for c in proj_cats %}<option value="{{ c.nombre }}" {% if c.nombre == category_filter %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      {% if active_project or category_filter %}
+      <a class="cal-clear-btn" title="Limpiar filtros" href="?vista={{ vista }}&amp;year={{ year }}&amp;month={{ month }}&amp;ref_date={{ ref_date }}">✕ Limpiar</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if vista == 'semana' %}
+  <div class="cal-week-grid">
+    {% for day in week_days %}
+    <div class="cal-week-col{% if day.is_today %} cal-cell-today{% elif day.is_past %} cal-cell-past{% endif %}" data-date="{{ day.date }}">
+      <div class="cal-week-col-head">
+        <a class="cal-week-dow" href="/agenda/{{ day.date }}/" title="Ver la agenda de este día">{{ day.dow }} <span class="cal-week-daynum">{{ day.day }}</span></a>
+        <button class="cal-week-add-btn" type="button" onclick="openNewTask('{{ day.date }}')" title="Nueva tarea este día">
+          {% if day.urgente %}<span class="cal-day-urgent" title="Tarea urgente pendiente">!</span>{% endif %}
+          {{ icon("plus", 12) }}
+        </button>
+      </div>
+      {% if day.sede or day.avisos or day.anotaciones %}
+      <div class="cal-week-tags">
+        {% if day.sede %}<div class="cal-week-tag" style="background:{{ day.sede.color }}">🏢 {{ day.sede.tipo }}</div>{% endif %}
+        {% for av in day.avisos %}<div class="cal-week-tag" style="background:{{ av.color }}" title="{{ av.nota }}">⚠ {{ av.tipo }}{% if av.nota %}: {{ av.nota|truncate(28) }}{% endif %}</div>{% endfor %}
+        {% for a in day.anotaciones %}<div class="cal-week-tag" style="background:{{ a.color }}" title="{{ a.nota }}">{{ a.tipo }}{% if a.nota %}: {{ a.nota|truncate(28) }}{% endif %}</div>{% endfor %}
+      </div>
+      {% endif %}
+      {% if day.reuniones %}
+      <div class="cal-week-reuniones">
+        {% for r in day.reuniones %}
+        <a class="cal-reunion-chip" href="/reunion/{{ r.reunion_id }}/" title="{{ r.titulo }}{% if r.hora %} · {{ r.hora }}{% endif %}">
+          {{ icon("calendar", 11) }}{% if r.hora %} {{ r.hora[:5] }}{% endif %} {{ r.titulo|truncate(26) }}
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="cal-week-tasks">
+        {% for task in day.tasks %}
+        <div class="cal-week-task-card{% if task.status == 'Hecha' %} cal-chip-done{% endif %}"
+             style="border-left-color:{{ task.proj_color }}" onclick="openTaskModal(this)"
+             data-task-id="{{ task.task_id }}" data-title="{{ task.title }}" data-proyecto="{{ task.proyecto_id }}"
+             data-category="{{ task.category }}" data-status="{{ task.status }}" data-priority="{{ task.priority }}"
+             data-description="{{ task.description }}" data-next-step="{{ task.next_step }}"
+             data-fecha-inicio="{{ task.fecha_inicio }}" data-fecha-fin="{{ task.fecha_fin }}"
+             data-sprint-id="{{ task.sprint_id }}" data-subtareas="{{ task.subtareas_raw }}"
+             data-tiempo-estimado="{{ task.tiempo_estimado or '' }}" data-tiempo-real="{{ task.tiempo_real or '' }}">
+          <div class="cal-week-task-top">
+            <span class="cal-chip-dot" data-status="{{ task.status }}"></span>
+            <span class="cal-week-task-status">{{ task.status }}</span>
+            {% if task.priority == 'Alta' %}<span class="cal-week-prio cal-week-prio-alta">Alta</span>{% endif %}
+            {% if task.anclada %}<span class="cal-chip-pin" title="Tarea anclada">📌</span>{% endif %}
+          </div>
+          <div class="cal-week-task-title">{{ task.title }}</div>
+          {% if task.category %}<div class="cal-week-task-meta">{{ task.category }}{% if task.proj_nombre %} · {{ task.proj_nombre }}{% endif %}</div>{% endif %}
+          {% if task.next_step %}<div class="cal-week-task-next">{{ task.next_step|truncate(60) }}</div>{% endif %}
+        </div>
+        {% else %}<div class="cal-week-empty">Sin tareas</div>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="cal-grid">
+    <div class="cal-dow">Lun</div><div class="cal-dow">Mar</div><div class="cal-dow">Mié</div>
+    <div class="cal-dow">Jue</div><div class="cal-dow">Vie</div>
+    <div class="cal-dow cal-dow-weekend">Sáb</div><div class="cal-dow cal-dow-weekend">Dom</div>
+
+    {% for week in weeks %}
+    {% for day in week %}
+    {% if day.day %}
+    <div class="cal-cell{% if day.is_today %} cal-cell-today{% elif day.is_past %} cal-cell-past{% endif %}" data-date="{{ day.date }}">
+      {% if day.sede %}<div class="cal-sede-bar" style="background:{{ day.sede.color }}" title="{{ day.sede.tipo }}"></div>{% endif %}
+      {% if day.aviso %}<div class="cal-aviso-ribbon" style="background:{{ day.aviso.color }}" title="Aviso{% if day.aviso.nota %} — {{ day.aviso.nota }}{% endif %}"></div>{% endif %}
+      {% if day.anotaciones %}
+      <div class="cal-dots">{% for a in day.anotaciones %}<span class="cal-dot" style="background:{{ a.color }}" title="{{ a.tipo }}{% if a.nota %} — {{ a.nota }}{% endif %}"></span>{% endfor %}</div>
+      {% endif %}
+      <button class="cal-day-add-btn" type="button" onclick="openNewTask('{{ day.date }}')" title="Nueva tarea este día">{{ icon("plus", 11) }}</button>
+      <a class="cal-day-num" href="/agenda/{{ day.date }}/" title="Ver la agenda de este día">
+        {% if day.urgente %}<span class="cal-day-urgent" title="Tarea urgente pendiente">!</span>{% endif %}{{ day.day }}
+      </a>
+      {% if day.reuniones %}
+      <div class="cal-reuniones">
+        {% for r in day.reuniones[:2] %}
+        <a class="cal-reunion-chip" href="/reunion/{{ r.reunion_id }}/" title="{{ r.titulo }}{% if r.hora %} · {{ r.hora }}{% endif %}">
+          {% if r.hora %}{{ r.hora[:5] }}{% endif %} {{ r.titulo|truncate(18) }}
+        </a>
+        {% endfor %}
+        {% if day.reuniones|length > 2 %}<div class="cal-overflow">+{{ day.reuniones|length - 2 }} más</div>{% endif %}
+      </div>
+      {% endif %}
+      <div class="cal-tasks">
+        {% for task in day.tasks[:4] %}
+        <div class="cal-task-chip{% if task.status == 'Hecha' %} cal-chip-done{% endif %}{% if task.priority == 'Alta' %} cal-chip-alta{% endif %}"
+             style="border-left-color:{{ task.proj_color }}" onclick="openTaskModal(this)"
+             title="{{ task.title }} — {{ task.status }}{% if task.proj_nombre %} ({{ task.proj_nombre }}){% endif %}"
+             data-task-id="{{ task.task_id }}" data-title="{{ task.title }}" data-proyecto="{{ task.proyecto_id }}"
+             data-category="{{ task.category }}" data-status="{{ task.status }}" data-priority="{{ task.priority }}"
+             data-description="{{ task.description }}" data-next-step="{{ task.next_step }}"
+             data-fecha-inicio="{{ task.fecha_inicio }}" data-fecha-fin="{{ task.fecha_fin }}"
+             data-sprint-id="{{ task.sprint_id }}" data-subtareas="{{ task.subtareas_raw }}"
+             data-tiempo-estimado="{{ task.tiempo_estimado or '' }}" data-tiempo-real="{{ task.tiempo_real or '' }}">
+          <span class="cal-chip-dot" data-status="{{ task.status }}"></span>
+          {% if task.anclada %}<span class="cal-chip-pin" title="Tarea anclada">📌</span>{% endif %}
+          <span class="cal-chip-text">{{ task.title|truncate(32) }}</span>
+        </div>
+        {% endfor %}
+        {% if day.tasks|length > 4 %}<div class="cal-overflow">+{{ day.tasks|length - 4 }} más</div>{% endif %}
+      </div>
+    </div>
+    {% else %}<div class="cal-cell cal-cell-empty"></div>{% endif %}
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- MODAL: tarea -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-stripe" id="taskModalStripe" style="background:#2563eb"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="taskModalTitle">Nueva tarea</h3>
+      <form method="post" id="taskModalForm">{{ csrf_field() }}
+        <input type="hidden" name="volver" id="tm_volver">
+        <div class="form-group"><label>TÍTULO</label><input type="text" name="title" id="tm_title" required></div>
+        <div class="form-row">
+          <div class="form-group"><label>PROYECTO</label>
+            <select name="proyecto" id="tm_proyecto">
+              {% for p in proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group"><label>CATEGORÍA</label><select name="category" id="tm_category"></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>ESTADO</label><select name="status" id="tm_status"></select></div>
+          <div class="form-group"><label>PRIORIDAD</label>
+            <select name="priority" id="tm_priority">{% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <div class="form-group" id="tm_sprint_group" style="display:none">
+          <label>SPRINT</label>
+          <select name="sprint_id" id="tm_sprint"><option value="">— sin sprint (backlog) —</option></select>
+        </div>
+        <div class="form-group"><label>DESCRIPCIÓN</label><textarea name="description" id="tm_description" rows="3"></textarea></div>
+        <div class="form-group"><label>PRÓXIMO PASO</label><textarea name="next_step" id="tm_next_step" rows="2"></textarea></div>
+        <div class="form-group">
+          <label>SUBTAREAS</label>
+          <div class="subtask-list" id="subtaskList"></div>
+          <button type="button" class="btn-secondary btn-sm" onclick="addSubtask()">+ Subtarea</button>
+          <input type="hidden" name="subtareas" id="tm_subtareas">
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>TIEMPO ESTIMADO (h)</label><input type="number" name="tiempo_estimado" id="tm_tiempo_estimado" min="0" step="0.5"></div>
+          <div class="form-group"><label>TIEMPO REAL (h)</label><input type="number" name="tiempo_real" id="tm_tiempo_real" min="0" step="0.5"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>FECHA INICIO</label><input type="date" name="fecha_inicio" id="tm_fecha_inicio"></div>
+          <div class="form-group"><label>FECHA FIN</label><input type="date" name="fecha_fin" id="tm_fecha_fin"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+var PROYECTO_COLORES = {
+  {% for p in proyectos %}"{{ p.id }}": "{{ p.color }}"{% if not loop.last %},{% endif %}{% endfor %}
+};
+var PROYECTO_TIPOS = {
+  {% for p in proyectos %}"{{ p.id }}": "{{ p.tipo }}"{% if not loop.last %},{% endif %}{% endfor %}
+};
+
+// ── subtareas ────────────────────────────────────────────────────────────────
+var _subtaskData = [];
+function renderSubtasks() {
+  var list = document.getElementById('subtaskList');
+  list.innerHTML = '';
+  _subtaskData.forEach(function(s, i) {
+    var row = document.createElement('div');
+    row.className = 'subtask-row';
+    var safe = (s.t || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    row.innerHTML = '<input type="checkbox" class="subtask-check"' + (s.d ? ' checked' : '') +
+      ' onchange="_subtaskData['+i+'].d=this.checked;syncSubtasks()">' +
+      '<input type="text" class="subtask-text" value="' + safe + '" oninput="_subtaskData['+i+'].t=this.value;syncSubtasks()" placeholder="Subtarea...">' +
+      '<button type="button" class="subtask-del" onclick="_subtaskData.splice('+i+',1);renderSubtasks()">×</button>';
+    list.appendChild(row);
+  });
+  syncSubtasks();
+}
+function syncSubtasks() {
+  var filtered = _subtaskData.filter(function(s){ return s.t && s.t.trim(); });
+  document.getElementById('tm_subtareas').value = filtered.length ? JSON.stringify(filtered) : '';
+}
+function addSubtask() {
+  _subtaskData.push({t:'', d:false});
+  renderSubtasks();
+  var inputs = document.querySelectorAll('.subtask-text');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function setSelect(id, value) { var el = document.getElementById(id); if (el && value) el.value = value; }
+
+function fetchCategorias(proyectoId, selectAfter) {
+  var sel = document.getElementById('tm_category');
+  sel.innerHTML = '';
+  if (!proyectoId) return;
+  fetch('/calendario/categorias/' + proyectoId + '/json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      data.categories.forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c.nombre; opt.textContent = c.nombre;
+        sel.appendChild(opt);
+      });
+      setSelect('tm_category', selectAfter);
+    });
+}
+
+function fetchColumnas(proyectoId, selectAfter) {
+  var sel = document.getElementById('tm_status');
+  sel.innerHTML = '';
+  if (!proyectoId) return;
+  fetch('/calendario/columnas/' + proyectoId + '/json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      data.columnas.forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c.nombre; opt.textContent = c.nombre;
+        sel.appendChild(opt);
+      });
+      setSelect('tm_status', selectAfter);
+    });
+}
+
+function updateSprintSelector(proyectoId, selectAfter) {
+  var group = document.getElementById('tm_sprint_group');
+  var sel = document.getElementById('tm_sprint');
+  if (PROYECTO_TIPOS[proyectoId] !== 'scrum') {
+    group.style.display = 'none';
+    sel.innerHTML = '<option value="">— sin sprint (backlog) —</option>';
+    return;
+  }
+  group.style.display = 'block';
+  fetch('/calendario/sprints/' + proyectoId + '/json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      sel.innerHTML = '<option value="">— sin sprint (backlog) —</option>';
+      data.sprints.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s.sprint_id;
+        opt.textContent = s.nombre + (s.estado === 'activo' ? ' · activo' : '');
+        sel.appendChild(opt);
+      });
+      setSelect('tm_sprint', selectAfter);
+    });
+}
+
+function openTaskModal(el) {
+  var modal = document.getElementById('taskModal');
+  var form  = document.getElementById('taskModalForm');
+  var isEdit = !!(el && el.dataset && el.dataset.taskId);
+  document.getElementById('taskModalTitle').textContent = isEdit ? 'Editar tarea' : 'Nueva tarea';
+  form.action = isEdit ? '/calendario/tarea/' + el.dataset.taskId + '/editar/' : '/calendario/tarea/nueva/';
+  document.getElementById('tm_volver').value = window.location.pathname + window.location.search;
+
+  document.getElementById('tm_title').value        = isEdit ? el.dataset.title : '';
+  document.getElementById('tm_description').value  = isEdit ? el.dataset.description : '';
+  document.getElementById('tm_next_step').value    = isEdit ? el.dataset.nextStep : '';
+  document.getElementById('tm_fecha_inicio').value = isEdit ? el.dataset.fechaInicio : '';
+  document.getElementById('tm_fecha_fin').value    = isEdit ? el.dataset.fechaFin : '';
+  document.getElementById('tm_tiempo_estimado').value = isEdit ? el.dataset.tiempoEstimado : '';
+  document.getElementById('tm_tiempo_real').value     = isEdit ? el.dataset.tiempoReal : '';
+
+  try { _subtaskData = (isEdit && el.dataset.subtareas) ? JSON.parse(el.dataset.subtareas) : []; }
+  catch (e) { _subtaskData = []; }
+  renderSubtasks();
+
+  var proyectoSel = document.getElementById('tm_proyecto');
+  var proyectoId = isEdit ? el.dataset.proyecto : (proyectoSel.options[0] ? proyectoSel.options[0].value : '');
+  proyectoSel.value = proyectoId;
+  document.getElementById('taskModalStripe').style.background = PROYECTO_COLORES[proyectoId] || '#2563eb';
+
+  fetchCategorias(proyectoId, isEdit ? el.dataset.category : '');
+  fetchColumnas(proyectoId, isEdit ? el.dataset.status : '');
+  updateSprintSelector(proyectoId, isEdit ? el.dataset.sprintId : '');
+  setSelect('tm_priority', isEdit ? el.dataset.priority : 'Normal');
+
+  modal.classList.add('open');
+  setTimeout(function() { var t = document.getElementById('tm_title'); if (t) t.focus(); }, 50);
+}
+
+function openNewTask(dateStr) {
+  openTaskModal(null);
+  document.getElementById('tm_fecha_fin').value = dateStr;
+}
+
+document.getElementById('tm_proyecto').addEventListener('change', function() {
+  document.getElementById('taskModalStripe').style.background = PROYECTO_COLORES[this.value] || '#2563eb';
+  fetchCategorias(this.value, '');
+  fetchColumnas(this.value, '');
+  updateSprintSelector(this.value, '');
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(function(m) { closeModal(m.id); });
+});
+</script>
+{% endblock %}

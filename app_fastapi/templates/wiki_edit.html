@@ -1,0 +1,175 @@
+{% extends "_base.html" %}
+{% block title %}{% if current_page %}Editar — {{ current_page.title }}{% else %}Nueva página{% endif %} — Wiki — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root { --text: var(--ink); --bg-alt: #f8fafc; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+  .wiki-editor-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  .wiki-editor-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 24px; background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 12px; }
+  .wiki-editor-bar-left { display: flex; align-items: center; gap: 12px; }
+  .wiki-editor-bar-right { display: flex; align-items: center; gap: 10px; }
+  .wiki-editor-cancel { padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: #6b7280; text-decoration: none; border: 1px solid var(--border); background: var(--bg); transition: background .12s; }
+  .wiki-editor-cancel:hover { background: var(--bg-alt); }
+  .wiki-editor-path { font-size: 13px; color: #9ca3af; }
+  .wiki-editor-path a { color: #6b7280; text-decoration: none; }
+  .wiki-editor-path a:hover { color: var(--selected); }
+  .wiki-editor-hint { font-size: 11px; color: #9ca3af; }
+  .wiki-editor-area { flex: 1; overflow-y: auto; padding: 40px 0 80px; display: flex; flex-direction: column; align-items: center; }
+  .wiki-editor-header { display: flex; align-items: flex-start; gap: 12px; width: 100%; max-width: 720px; padding: 0 24px; margin-bottom: 6px; }
+  .wiki-icon-wrap { position: relative; flex-shrink: 0; }
+  .wiki-icon-btn { width: 52px; height: 52px; border-radius: 10px; border: 2px dashed #e5e7eb; background: var(--bg-alt); font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: border-color .15s; margin-top: 4px; }
+  .wiki-icon-btn:hover { border-color: #9ca3af; }
+  .wiki-emoji-picker { position: absolute; top: 58px; left: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); z-index: 300; padding: 10px; width: 280px; display: none; flex-wrap: wrap; gap: 4px; }
+  .wiki-emoji-picker.open { display: flex; }
+  .wiki-emoji-opt { width: 34px; height: 34px; border: none; background: none; cursor: pointer; font-size: 20px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background .1s; }
+  .wiki-emoji-opt:hover { background: var(--bg-alt); }
+  .wiki-title-input { flex: 1; border: none; outline: none; background: transparent; font-size: 34px; font-weight: 800; color: var(--text); padding: 4px 0; line-height: 1.2; caret-color: var(--selected); font-family: inherit; }
+  .wiki-parent-row { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 720px; padding: 0 24px; margin-bottom: 16px; }
+  .wiki-parent-label { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+  .wiki-parent-select { font-size: 12px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); flex: 1; }
+  .wiki-editorjs { width: 100%; max-width: 720px; padding: 0 24px; min-height: 400px; }
+  .codex-editor { font-family: inherit !important; }
+  .ce-block__content { max-width: 100% !important; }
+  .ce-toolbar__content { max-width: 100% !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wiki-editor-layout">
+  <div class="wiki-editor-bar">
+    <div class="wiki-editor-bar-left">
+      <a href="{% if current_page %}/proyecto/{{ proyecto.id }}/wiki/{{ current_page.page_id }}/{% else %}/proyecto/{{ proyecto.id }}/wiki/{% endif %}" class="wiki-editor-cancel">✕ Cancelar</a>
+      <span class="wiki-editor-path">
+        <a href="/proyecto/{{ proyecto.id }}/wiki/">{{ proyecto.nombre }}</a>
+        <span> › </span>
+        {% if current_page %}<span>{{ current_page.icon }} {{ current_page.title }}</span>{% else %}<span>Nueva página</span>{% endif %}
+      </span>
+    </div>
+    <div class="wiki-editor-bar-right">
+      <span class="wiki-editor-hint">Ctrl/Cmd+S para guardar</span>
+      <button type="button" class="btn-primary" onclick="saveWikiPage()">Guardar</button>
+    </div>
+  </div>
+
+  <div class="wiki-editor-area">
+    <form id="wikiForm" method="post" action="{% if current_page %}/proyecto/{{ proyecto.id }}/wiki/{{ current_page.page_id }}/editar/{% else %}/proyecto/{{ proyecto.id }}/wiki/nueva/{% endif %}">{{ csrf_field() }}
+      <input type="hidden" name="parent_id" id="wikiParentId" value="{{ default_parent_id }}">
+      <input type="hidden" name="content" id="wikiContent">
+
+      <div class="wiki-editor-header">
+        <div class="wiki-icon-wrap">
+          <button type="button" class="wiki-icon-btn" id="wikiIconBtn" onclick="toggleEmojiPicker(event)">{{ current_page.icon if current_page else '📄' }}</button>
+          <div class="wiki-emoji-picker" id="emojiPicker">
+            {% for emoji in common_emojis %}<button type="button" class="wiki-emoji-opt" onclick="selectEmoji('{{ emoji }}')">{{ emoji }}</button>{% endfor %}
+          </div>
+          <input type="hidden" name="icon" id="wikiIcon" value="{{ current_page.icon if current_page else '📄' }}">
+        </div>
+        <input type="text" name="title" id="wikiTitle" class="wiki-title-input" placeholder="Título de la página"
+               value="{{ current_page.title if current_page else '' }}" required autocomplete="off">
+      </div>
+
+      {% if wiki_pages %}
+      <div class="wiki-parent-row">
+        <label class="wiki-parent-label">Página padre</label>
+        <select id="wikiParentSelect" class="wiki-parent-select" onchange="document.getElementById('wikiParentId').value=this.value">
+          <option value="">— raíz —</option>
+          {% for p in wiki_pages %}
+          {% if not current_page or p.page_id != current_page.page_id %}
+          <option value="{{ p.page_id }}" {% if (current_page and p.page_id == current_page.parent_id) or (not current_page and p.page_id == default_parent_id) %}selected{% endif %}>{{ p.icon }} {{ p.title }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </form>
+
+    <div id="editorjs" class="wiki-editorjs"></div>
+  </div>
+</div>
+
+<script src="/static/js/editorjs/editorjs.js"></script>
+<script src="/static/js/editorjs/header.js"></script>
+<script src="/static/js/editorjs/list.js"></script>
+<script src="/static/js/editorjs/checklist.js"></script>
+<script src="/static/js/editorjs/code.js"></script>
+<script src="/static/js/editorjs/quote.js"></script>
+<script src="/static/js/editorjs/delimiter.js"></script>
+<script src="/static/js/editorjs/table.js"></script>
+<script src="/static/js/editorjs/inline-code.js"></script>
+<script src="/static/js/editorjs/marker.js"></script>
+<script src="/static/js/editorjs/warning.js"></script>
+<script src="/static/js/editorjs/image.js"></script>
+<script src="/static/js/editorjs/tareas-vivas.js"></script>
+
+<script id="editorData" type="application/json">{{ current_page_content|tojson_seguro }}</script>
+
+<script>
+var initialData = JSON.parse(document.getElementById('editorData').textContent);
+
+var editor = new EditorJS({
+  holder: 'editorjs',
+  placeholder: 'Escribe algo, o pulsa "/" para elegir un bloque...',
+  tools: {
+    header: { class: Header, config: { levels: [1, 2, 3, 4], defaultLevel: 2 }, shortcut: 'CMD+SHIFT+H' },
+    list: { class: List, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
+    checklist: { class: Checklist, inlineToolbar: true },
+    code: { class: CodeTool },
+    quote: { class: Quote, inlineToolbar: true, config: { quotePlaceholder: 'Cita', captionPlaceholder: 'Fuente' } },
+    delimiter: Delimiter,
+    table: { class: Table, inlineToolbar: true, config: { rows: 2, cols: 3 } },
+    inlineCode: { class: InlineCode, shortcut: 'CMD+SHIFT+M' },
+    Marker: { class: Marker, shortcut: 'CMD+SHIFT+H' },
+    warning: { class: Warning, inlineToolbar: true, config: { titlePlaceholder: 'Título', messagePlaceholder: 'Mensaje' } },
+    image: {
+      class: ImageTool,
+      config: {
+        endpoints: { byFile: '/proyecto/{{ proyecto.id }}/wiki/subir-imagen/' },
+        field: 'image',
+        additionalRequestHeaders: { 'X-CSRFToken': getCookie('gestor_csrftoken') },
+      },
+    },
+    tareasVivas: { class: TareasVivas },
+  },
+  data: initialData,
+  onChange: function() { markWikiDirty(); },
+});
+
+function saveWikiPage() {
+  editor.save().then(function(data) {
+    document.getElementById('wikiContent').value = JSON.stringify(data);
+    wikiDirty = false;
+    document.getElementById('wikiForm').submit();
+  }).catch(function(err) { console.error('Editor save error:', err); });
+}
+
+var wikiDirty = false;
+function markWikiDirty() { wikiDirty = true; }
+document.getElementById('wikiTitle').addEventListener('input', markWikiDirty);
+var wikiParentSelect = document.getElementById('wikiParentSelect');
+if (wikiParentSelect) wikiParentSelect.addEventListener('change', markWikiDirty);
+
+window.addEventListener('beforeunload', function(e) {
+  if (wikiDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+function selectEmoji(emoji) {
+  document.getElementById('wikiIcon').value = emoji;
+  document.getElementById('wikiIconBtn').textContent = emoji;
+  document.getElementById('emojiPicker').classList.remove('open');
+  markWikiDirty();
+}
+function toggleEmojiPicker(e) { e.stopPropagation(); document.getElementById('emojiPicker').classList.toggle('open'); }
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.wiki-icon-wrap')) document.getElementById('emojiPicker').classList.remove('open');
+});
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveWikiPage(); }
+});
+window.addEventListener('load', function() {
+  var t = document.getElementById('wikiTitle');
+  if (t && !t.value) t.focus();
+});
+</script>
+{% endblock %}

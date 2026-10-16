@@ -1,0 +1,401 @@
+{% extends "_base.html" %}
+{% block title %}Buzón — {{ app_nombre() }}{% endblock %}
+
+{% macro fecha(dt) %}{% if dt %}{{ dt[8:10] }}/{{ dt[5:7] }}/{{ dt[0:4] }}{% if dt|length > 10 %} {{ dt[11:16] }}{% endif %}{% endif %}{% endmacro %}
+
+{# iniciales + color estable por persona (mismo usuario = mismo color en toda la pagina) #}
+{% macro avatar(nombre, uid) %}{% set partes = (nombre or '?').replace('_', ' ').split() %}<span class="bz-avatar" style="background:hsl({{ (uid * 67) % 360 }},55%,46%)">{{ (partes[0][0] ~ (partes[1][0] if partes|length > 1 else ''))|upper }}</span>{% endmacro %}
+
+{% macro acciones(n) %}
+<div class="bz-acciones">
+  {% if n.para_user_id == user_id and not n.personal %}
+  <form method="post" action="/buzon/{{ n.id }}/leida/?volver={{ volver|urlencode }}">{{ csrf_field() }}<button type="submit" title="{% if n.leida %}Marcar como no leída{% else %}Marcar como leída{% endif %}">{{ icon("check-circle", 14) }}<span>{% if n.leida %}No leída{% else %}Leída{% endif %}</span></button></form>
+  {% endif %}
+  <button type="button" onclick="bzATarea({{ n.id }})" title="Convertir en tarea">{{ icon("plus", 14) }}<span>Tarea</span></button>
+  <button type="button" onclick="bzReenviar({{ n.id }})" title="Reenviar a otra persona">{{ icon("arrow-right", 14) }}<span>Reenviar</span></button>
+  {% if n.de_user_id == user_id %}
+  <button type="button" onclick="bzEditar({{ n.id }})" title="Editar">{{ icon("edit-2", 13) }}</button>
+  <form method="post" action="/buzon/{{ n.id }}/eliminar/?volver={{ volver|urlencode }}" onsubmit="return confirm('¿Eliminar esta nota?')">{{ csrf_field() }}<button type="submit" class="bz-peligro" title="Eliminar">{{ icon("trash-2", 13) }}</button></form>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro chips(n) %}
+{% if n.vence_en or n.reenviada_de or n.n_tareas or (not n.personal and n.de_user_id == user_id) %}
+<div class="bz-chips">
+  {% if n.vence_en %}<span class="bz-chip {% if n.vence_en < hoy %}bz-chip-vencida{% elif n.vence_en == hoy %}bz-chip-hoy{% else %}bz-chip-vence{% endif %}" title="Aviso {{ n.aviso_cantidad }} {{ n.aviso_unidad }} antes">{{ icon("clock", 11) }} {% if n.vence_en < hoy %}Venció{% elif n.vence_en == hoy %}Vence hoy{% else %}Vence{% endif %} {{ fecha(n.vence_en) }}</span>{% endif %}
+  {% if not n.personal and n.de_user_id == user_id %}<span class="bz-chip {% if n.leida %}bz-chip-ok{% endif %}">{% if n.leida %}✓ Leída {{ fecha(n.leida_en) }}{% else %}Sin leer todavía{% endif %}</span>{% endif %}
+  {% if n.reenviada_de %}<span class="bz-chip">{{ icon("arrow-right", 11) }} Reenviada</span>{% endif %}
+  {% if n.n_tareas %}<span class="bz-chip bz-chip-tarea">{{ icon("check-circle", 11) }} {{ n.n_tareas }} tarea{{ 's' if n.n_tareas > 1 }}</span>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# nota de la bandeja (recibida o enviada): tipo conversacion, con avatar de la otra persona #}
+{% macro tarjeta(n) %}
+{% set nueva = not n.leida and n.para_user_id == user_id %}
+{% set otro_nombre = n.de_nombre if n.para_user_id == user_id else n.para_nombre %}
+{% set otro_id = n.de_user_id if n.para_user_id == user_id else n.para_user_id %}
+<article class="bz-nota {% if nueva %}bz-nueva{% endif %}" id="nota-{{ n.id }}">
+  {{ avatar(otro_nombre, otro_id) }}
+  <div class="bz-nota-cuerpo">
+    <div class="bz-nota-head">
+      <span class="bz-quien">{% if nueva %}<span class="bz-punto" title="Sin leer"></span>{% endif %}{% if n.para_user_id != user_id %}<span class="bz-para">Para</span> {% endif %}<strong>{{ otro_nombre }}</strong></span>
+      <span class="bz-fecha" title="{% if n.editada_en %}Editada el {{ fecha(n.editada_en) }}{% endif %}">{{ fecha(n.creada_en) }}{% if n.editada_en %} · editada{% endif %}</span>
+    </div>
+    <div class="bz-contenido">{{ n.contenido }}</div>
+    <div class="bz-nota-foot">{{ chips(n) }}{{ acciones(n) }}</div>
+  </div>
+</article>
+{% endmacro %}
+
+{# nota propia: post-it #}
+{% macro postit(n) %}
+<article class="bz-postit" id="nota-{{ n.id }}">
+  <div class="bz-contenido">{{ n.contenido }}</div>
+  {{ chips(n) }}
+  <div class="bz-postit-foot">
+    <span class="bz-fecha">{{ fecha(n.creada_en) }}</span>
+    {{ acciones(n) }}
+  </div>
+</article>
+{% endmacro %}
+
+{% block extra_head %}
+<style>
+  .bz-page { padding: 22px 28px 28px; display: flex; flex-direction: column; gap: 16px; height: calc(100vh - 52px); box-sizing: border-box; }
+  .bz-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; }
+  .bz-head h1 { font-size: 21px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .bz-head p { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+  .bz-head-acciones { display: flex; gap: 8px; flex-shrink: 0; }
+  .bz-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; flex: 1; min-height: 0; }
+  .bz-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .bz-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .bz-panel-head h2 { font-size: 14px; margin: 0; display: flex; align-items: center; gap: 6px; }
+  .bz-panel-head h2 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .bz-panel-body { overflow-y: auto; flex: 1; }
+  .bz-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .bz-filtros { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .bz-filtros input[type=date], .bz-filtros select { width: auto; padding: 4px 8px; font-size: 12px; height: 28px; box-sizing: border-box; }
+  .bz-filtros input[type=date] { width: 132px; }
+  .bz-filtros select { max-width: 180px; }
+  .bz-link { background: none; border: none; color: var(--color-blue); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+  .bz-link:hover { background: color-mix(in srgb, var(--color-blue) 8%, transparent); }
+  .bz-toolbar .bz-derecha { margin-left: auto; }
+  .bz-tabs { display: inline-flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+  .bz-tabs a { padding: 5px 14px; font-size: 13px; color: var(--muted); border-radius: 7px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .bz-tabs a:hover { color: var(--ink); }
+  .bz-tabs a.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-sm); }
+  .bz-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--color-red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-sizing: border-box; }
+
+  .bz-nota { display: flex; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); transition: background .12s; }
+  .bz-nota:hover { background: color-mix(in srgb, var(--bg) 60%, var(--panel)); }
+  .bz-nota.bz-nueva { background: color-mix(in srgb, var(--color-blue) 5%, var(--panel)); }
+  .bz-nota:target, .bz-postit:target { box-shadow: inset 0 0 0 2px var(--selected); }
+  .bz-avatar { width: 34px; height: 34px; border-radius: 50%; color: #fff; font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; letter-spacing: .02em; }
+  .bz-nota-cuerpo { flex: 1; min-width: 0; }
+  .bz-nota-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .bz-quien { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+  .bz-nueva .bz-quien strong { color: var(--color-blue); }
+  .bz-para { color: var(--muted); font-size: 12.5px; }
+  .bz-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--color-blue); display: inline-block; }
+  .bz-fecha { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .bz-contenido { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; line-height: 1.55; color: var(--ink); }
+  .bz-nota-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; min-height: 26px; }
+  .bz-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .bz-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--muted); background: var(--bg); padding: 2px 8px; border-radius: 9px; }
+  .bz-chip-vence { color: #92400e; background: #fef3c7; }
+  .bz-chip-hoy { color: #9a3412; background: #ffedd5; }
+  .bz-chip-vencida { color: #b91c1c; background: #fee2e2; }
+  .bz-chip-ok { color: #15803d; background: #dcfce7; }
+  .bz-chip-tarea { color: #6d28d9; background: #ede9fe; }
+  .bz-acciones { display: flex; gap: 2px; align-items: center; margin-left: auto; opacity: .8; transition: opacity .12s; }
+  .bz-nota:hover .bz-acciones, .bz-postit:hover .bz-acciones, .bz-acciones:focus-within { opacity: 1; }
+  .bz-acciones form { display: inline; }
+  .bz-acciones button { display: inline-flex; align-items: center; gap: 4px; background: none; border: none; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 7px; border-radius: 6px; }
+  .bz-acciones button:hover { background: var(--bg); color: var(--ink); }
+  .bz-acciones .bz-peligro:hover { color: var(--color-red); background: color-mix(in srgb, var(--color-red) 8%, transparent); }
+
+  .bz-propias-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); }
+  .bz-postit { background: #fef9c3; border-radius: 4px 4px 10px 4px; padding: 12px 12px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 3px 8px rgba(0,0,0,.04); color: #3f3a1a; }
+  .bz-postit .bz-contenido { color: #3f3a1a; font-size: 13px; margin-bottom: 6px; }
+  .bz-postit .bz-chips { margin-bottom: 4px; }
+  .bz-postit-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .bz-postit .bz-fecha { color: #8a7d3a; }
+  .bz-postit .bz-acciones button { color: #6b5f22; padding: 3px 5px; }
+  .bz-postit .bz-acciones button span { display: none; }
+  .bz-postit .bz-acciones button:hover { background: rgba(0,0,0,.06); color: #3f3a1a; }
+  .bz-filtro-propias { font-size: 12px; color: var(--muted); }
+  .bz-filtro-propias summary { cursor: pointer; padding: 2px 4px; list-style: none; }
+  .bz-filtro-propias summary::-webkit-details-marker { display: none; }
+  .bz-filtro-propias[open] summary { color: var(--ink); }
+  .bz-filtro-propias .bz-filtros { padding-top: 8px; }
+
+  .bz-vacio { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .bz-vacio svg { opacity: .35; }
+  .bz-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--color-blue); color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .bz-btn:hover { filter: brightness(1.08); }
+  .bz-btn-sec { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .bz-btn-sec:hover { background: var(--bg); }
+  .bz-btn-sm { padding: 4px 10px; font-size: 12px; height: 28px; }
+
+  .bz-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); align-items: center; justify-content: center; z-index: 150; }
+  .bz-modal-overlay.open { display: flex; }
+  .bz-modal { background: var(--panel); border-radius: 12px; padding: 22px 24px; width: 480px; max-width: 92vw; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+  .bz-modal h3 { margin: 0 0 16px; font-size: 16px; }
+  .bz-campo { margin-bottom: 12px; }
+  .bz-campo label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+  .bz-campo input, .bz-campo select, .bz-campo textarea { font-family: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 100%; box-sizing: border-box; background: var(--panel); color: var(--ink); }
+  .bz-campo textarea { resize: vertical; line-height: 1.5; }
+  .bz-fila { display: flex; gap: 10px; }
+  .bz-fila .bz-campo { flex: 1; }
+  .bz-check { display: flex; gap: 6px; align-items: center; font-size: 13px; margin-bottom: 12px; }
+  .bz-hint { font-size: 12px; color: var(--muted); margin: -4px 0 12px; line-height: 1.45; }
+  .bz-modal-acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+  @media (max-width: 1000px) {
+    .bz-page { height: auto; padding: 16px; }
+    .bz-layout { grid-template-columns: 1fr; }
+    .bz-propias { order: -1; max-height: 420px; }
+    .bz-head { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bz-page">
+  <div class="bz-head">
+    <div>
+      <h1>{{ icon("inbox", 20) }} Buzón</h1>
+      <p>Notas para otra persona o para ti, con recordatorio opcional. Cualquier nota se puede convertir en tarea.</p>
+    </div>
+    <div class="bz-head-acciones">
+      <button type="button" class="bz-btn-sec" onclick="bzNueva(true)">{{ icon("edit-2", 13) }} Nota para mí</button>
+      <button type="button" class="bz-btn" onclick="bzNueva(false)">{{ icon("plus", 14) }} Enviar nota</button>
+    </div>
+  </div>
+
+  <div class="bz-layout">
+    <section class="bz-panel">
+      <div class="bz-panel-head">
+        <div class="bz-tabs">
+          <a href="/buzon/?vista=recibidas" class="{% if vista == 'recibidas' %}active{% endif %}">Recibidas{% if sin_leer %}<span class="bz-badge">{{ sin_leer }}</span>{% endif %}</a>
+          <a href="/buzon/?vista=enviadas" class="{% if vista == 'enviadas' %}active{% endif %}">Enviadas</a>
+        </div>
+        {% if vista == 'recibidas' and sin_leer %}
+        <form method="post" action="/buzon/leer-todas/?volver={{ volver|urlencode }}">{{ csrf_field() }}<button class="bz-link" type="submit">{{ icon("check-circle", 13) }} Marcar todas como leídas</button></form>
+        {% endif %}
+      </div>
+      <form class="bz-toolbar" method="get" action="/buzon/">
+        <input type="hidden" name="vista" value="{{ vista }}"><input type="hidden" name="p_desde" value="{{ p_desde }}"><input type="hidden" name="p_hasta" value="{{ p_hasta }}">
+        <div class="bz-filtros">
+          <select name="persona" onchange="this.form.submit()"><option value="">{% if vista == 'recibidas' %}Todos los remitentes{% else %}Todos los destinatarios{% endif %}</option>
+            {% for u in usuarios if u.id != user_id %}<option value="{{ u.id }}" {% if persona == u.id %}selected{% endif %}>{{ u.nombre_completo }}</option>{% endfor %}
+          </select>
+          <span>del</span><input type="date" name="desde" value="{{ desde }}" onchange="this.form.submit()">
+          <span>al</span><input type="date" name="hasta" value="{{ hasta }}" onchange="this.form.submit()">
+          {% if desde or hasta or persona %}<a class="bz-link" href="/buzon/?vista={{ vista }}">Quitar filtros</a>{% endif %}
+        </div>
+        <span class="bz-derecha bz-fecha">{{ lista|length }} nota{{ 's' if lista|length != 1 }}</span>
+      </form>
+      <div class="bz-panel-body">
+        {% for n in lista %}{{ tarjeta(n) }}{% else %}
+        <div class="bz-vacio">{{ icon("inbox", 36) }}<span>{% if desde or hasta or persona %}Ninguna nota con esos filtros.{% elif vista == 'recibidas' %}No has recibido ninguna nota todavía.{% else %}No has enviado ninguna nota todavía.{% endif %}</span></div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="bz-panel bz-propias">
+      <div class="bz-panel-head">
+        <h2>{{ icon("edit-2", 14) }} Notas propias <small>{{ propias|length }}</small></h2>
+        <details class="bz-filtro-propias" {% if p_desde or p_hasta %}open{% endif %}>
+          <summary>{{ icon("calendar", 13) }} Fechas</summary>
+          <form class="bz-filtros" method="get" action="/buzon/">
+            <input type="hidden" name="vista" value="{{ vista }}"><input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}"><input type="hidden" name="persona" value="{{ persona or '' }}">
+            <input type="date" name="p_desde" value="{{ p_desde }}" onchange="this.form.submit()" title="Desde">
+            <input type="date" name="p_hasta" value="{{ p_hasta }}" onchange="this.form.submit()" title="Hasta">
+          </form>
+        </details>
+      </div>
+      <div class="bz-panel-body bz-propias-body">
+        {% for n in propias %}{{ postit(n) }}{% else %}
+        <div class="bz-vacio">{{ icon("edit-2", 30) }}<span>{% if p_desde or p_hasta %}Sin notas propias en esas fechas.{% else %}Aquí van tus apuntes.<br>Pulsa «Nota para mí».{% endif %}</span></div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- MODAL: enviar / editar nota -->
+<div class="bz-modal-overlay" id="bzNotaModal">
+  <div class="bz-modal">
+    <h3 id="bzNotaTitulo">Enviar nota</h3>
+    <form method="post" id="bzNotaForm">{{ csrf_field() }}
+      <div class="bz-campo" id="bzParaCampo"><label>Para</label>
+        <select name="para_user_id" id="bzPara">
+          <option value="{{ user_id }}">Yo mismo (nota personal)</option>
+          {% for u in usuarios if u.id != user_id %}<option value="{{ u.id }}">{{ u.nombre_completo }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="bz-campo"><label>Nota</label><textarea name="contenido" id="bzContenido" rows="5" maxlength="4000" required></textarea></div>
+      <div class="bz-fila">
+        <div class="bz-campo"><label>Vence (opcional)</label><input type="date" name="vence_en" id="bzVence"></div>
+        <div class="bz-campo"><label>Avisar antes</label>
+          <div class="bz-fila"><input type="number" name="aviso_cantidad" id="bzAvisoN" min="0" max="999" value="1" style="width:70px;flex:0 0 70px;">
+            <select name="aviso_unidad" id="bzAvisoU">{% for u in aviso_unidades %}<option value="{{ u }}" {% if u == 'dias' %}selected{% endif %}>{{ {'horas': 'horas', 'dias': 'días', 'semanas': 'semanas'}[u] }}</option>{% endfor %}</select>
+          </div>
+        </div>
+      </div>
+      <p class="bz-hint">El aviso llega a la campana de quien recibe la nota (si es para ti, a la tuya). Se toma como hora de vencimiento las 09:00.</p>
+      <div class="bz-modal-acciones">
+        <button type="button" class="bz-btn-sec" onclick="bzCerrar('bzNotaModal')">Cancelar</button>
+        <button type="submit" class="bz-btn" id="bzNotaBtn">Enviar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: reenviar -->
+<div class="bz-modal-overlay" id="bzReenviarModal">
+  <div class="bz-modal">
+    <h3>Reenviar nota</h3>
+    <form method="post" id="bzReenviarForm">{{ csrf_field() }}
+      <div class="bz-campo"><label>Para</label>
+        <select name="para_user_id" required>
+          {% for u in usuarios if u.id != user_id %}<option value="{{ u.id }}">{{ u.nombre_completo }}</option>{% endfor %}
+          <option value="{{ user_id }}">Yo mismo</option>
+        </select>
+      </div>
+      <div class="bz-campo"><label>Nota</label><textarea name="contenido" id="bzRContenido" rows="5" maxlength="4000" required></textarea></div>
+      <div class="bz-fila">
+        <div class="bz-campo"><label>Vence (opcional)</label><input type="date" name="vence_en" id="bzRVence"></div>
+        <div class="bz-campo"><label>Avisar antes</label>
+          <div class="bz-fila"><input type="number" name="aviso_cantidad" id="bzRAvisoN" min="0" max="999" value="1" style="width:70px;flex:0 0 70px;">
+            <select name="aviso_unidad" id="bzRAvisoU">{% for u in aviso_unidades %}<option value="{{ u }}">{{ {'horas': 'horas', 'dias': 'días', 'semanas': 'semanas'}[u] }}</option>{% endfor %}</select>
+          </div>
+        </div>
+      </div>
+      <label class="bz-check" id="bzDesvincularFila" hidden><input type="checkbox" name="desvincular" value="1"> Desvincular de la nota original las tareas que ya generó (las tareas no se borran)</label>
+      <p class="bz-hint">Se crea una nota nueva; la original no cambia.</p>
+      <div class="bz-modal-acciones">
+        <button type="button" class="bz-btn-sec" onclick="bzCerrar('bzReenviarModal')">Cancelar</button>
+        <button type="submit" class="bz-btn">Reenviar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: convertir en tarea -->
+<div class="bz-modal-overlay" id="bzTareaModal">
+  <div class="bz-modal">
+    <h3>Convertir en tarea</h3>
+    {% if proyectos %}
+    <form method="post" id="bzTareaForm">{{ csrf_field() }}
+      <div class="bz-campo"><label>Título</label><input type="text" name="titulo" id="bzTTitulo" maxlength="200" required></div>
+      <div class="bz-campo"><label>Descripción</label><textarea name="descripcion" id="bzTDesc" rows="4"></textarea></div>
+      <div class="bz-fila">
+        <div class="bz-campo"><label>Proyecto</label>
+          <select name="proyecto_id" id="bzTProyecto" onchange="bzProyectoCambia()" required>
+            {% for grupo in proyectos|groupby('espacio') %}
+            <optgroup label="{{ grupo.grouper }}">{% for p in grupo.list %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="bz-campo"><label>Columna</label><select name="estado" id="bzTColumna"></select></div>
+      </div>
+      <div class="bz-campo" id="bzTAsignadoCampo"><label>Asignar a</label>
+        <select name="asignado_a" id="bzTAsignado">
+          <option value="{{ user_id }}">A mí</option>
+          {% for u in usuarios if u.id != user_id %}<option value="{{ u.id }}">{{ u.nombre_completo }}</option>{% endfor %}
+        </select>
+      </div>
+      <p class="bz-hint" id="bzTAsignadoHint" hidden>En este proyecto la tarea se te asigna a ti: para asignarla a otra persona hay que ser de IT o Admin de su espacio.</p>
+      <div class="bz-modal-acciones">
+        <button type="button" class="bz-btn-sec" onclick="bzCerrar('bzTareaModal')">Cancelar</button>
+        <button type="submit" class="bz-btn">Crear tarea</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="bz-hint" style="margin:0 0 12px;">No tienes ningún proyecto donde puedas crear tareas (hace falta ser Editor o Admin de su espacio).</p>
+    <div class="bz-modal-acciones"><button type="button" class="bz-btn-sec" onclick="bzCerrar('bzTareaModal')">Cerrar</button></div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+var BZ_VOLVER = {{ volver|tojson }};
+var BZ_YO = {{ user_id }};
+var BZ_NOTAS = {
+  {% for n in propias + lista %}{{ n.id }}: {contenido: {{ n.contenido|tojson }}, vence: {{ n.vence_en|tojson }}, avisoN: {{ n.aviso_cantidad }}, avisoU: {{ n.aviso_unidad|tojson }}, tareas: {{ n.n_tareas }}},
+  {% endfor %}
+};
+var BZ_COLUMNAS = {{ columnas|tojson }};
+var BZ_ASIGNA = {{ asigna_a_cualquiera|tojson }};
+
+function bzAccion(ruta) { return ruta + '?volver=' + encodeURIComponent(BZ_VOLVER); }
+function bzAbrir(id) { document.getElementById(id).classList.add('open'); }
+function bzCerrar(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.bz-modal-overlay').forEach(function(m) {
+  m.addEventListener('click', function(e) { if (e.target === m) m.classList.remove('open'); });
+});
+
+function bzNueva(personal) {
+  var f = document.getElementById('bzNotaForm');
+  f.action = bzAccion('/buzon/enviar/');
+  f.reset();
+  document.getElementById('bzNotaTitulo').textContent = personal ? 'Nota personal' : 'Enviar nota';
+  document.getElementById('bzNotaBtn').textContent = personal ? 'Guardar' : 'Enviar';
+  document.getElementById('bzParaCampo').hidden = personal;
+  document.getElementById('bzPara').value = personal ? BZ_YO : (document.querySelector('#bzPara option:nth-child(2)') || {}).value || BZ_YO;
+  bzAbrir('bzNotaModal');
+  document.getElementById('bzContenido').focus();
+}
+
+function bzEditar(id) {
+  var n = BZ_NOTAS[id], f = document.getElementById('bzNotaForm');
+  f.action = bzAccion('/buzon/' + id + '/editar/');
+  document.getElementById('bzNotaTitulo').textContent = 'Editar nota';
+  document.getElementById('bzNotaBtn').textContent = 'Guardar';
+  document.getElementById('bzParaCampo').hidden = true;
+  document.getElementById('bzContenido').value = n.contenido;
+  document.getElementById('bzVence').value = n.vence || '';
+  document.getElementById('bzAvisoN').value = n.avisoN;
+  document.getElementById('bzAvisoU').value = n.avisoU;
+  bzAbrir('bzNotaModal');
+}
+
+function bzReenviar(id) {
+  var n = BZ_NOTAS[id];
+  document.getElementById('bzReenviarForm').action = bzAccion('/buzon/' + id + '/reenviar/');
+  document.getElementById('bzRContenido').value = n.contenido;
+  document.getElementById('bzRVence').value = n.vence || '';
+  document.getElementById('bzRAvisoN').value = n.avisoN;
+  document.getElementById('bzRAvisoU').value = n.avisoU;
+  document.getElementById('bzDesvincularFila').hidden = !n.tareas;
+  bzAbrir('bzReenviarModal');
+}
+
+function bzProyectoCambia() {
+  var pid = document.getElementById('bzTProyecto').value;
+  var sel = document.getElementById('bzTColumna');
+  sel.innerHTML = '';
+  (BZ_COLUMNAS[pid] || []).forEach(function(c) { var o = document.createElement('option'); o.value = o.textContent = c; sel.appendChild(o); });
+  var cualquiera = !!BZ_ASIGNA[pid];
+  document.getElementById('bzTAsignadoCampo').hidden = !cualquiera;
+  document.getElementById('bzTAsignadoHint').hidden = cualquiera;
+  if (!cualquiera) document.getElementById('bzTAsignado').value = BZ_YO;
+}
+
+function bzATarea(id) {
+  var form = document.getElementById('bzTareaForm');
+  if (form) {
+    var n = BZ_NOTAS[id], primera = n.contenido.split('\n')[0].trim();
+    form.action = '/buzon/' + id + '/a-tarea/';
+    document.getElementById('bzTTitulo').value = primera.length > 120 ? primera.slice(0, 117) + '...' : primera;
+    document.getElementById('bzTDesc').value = n.contenido;
+    bzProyectoCambia();
+  }
+  bzAbrir('bzTareaModal');
+}
+</script>
+{% endblock %}

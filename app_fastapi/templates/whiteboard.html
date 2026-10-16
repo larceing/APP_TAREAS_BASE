@@ -1,0 +1,118 @@
+{% extends "_base.html" %}
+{% block title %}Whiteboard — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .project-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px 16px; background: var(--panel); border-top: 4px solid var(--selected); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .project-title { font-size: 22px; font-weight: 800; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-danger { background: var(--color-red); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+
+  .whiteboard-page { padding: 16px 20px; }
+  .whiteboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .whiteboard-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; cursor: pointer; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
+  .whiteboard-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .whiteboard-card-thumb { aspect-ratio: 16/10; background: var(--bg); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); overflow: hidden; }
+  .whiteboard-card-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .whiteboard-card-thumb svg { opacity: .3; }
+  .whiteboard-card-thumb-blank { background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 14px 14px; }
+  .whiteboard-card-new { border: 2px dashed var(--border); box-shadow: none; background: transparent; text-decoration: none; color: inherit; }
+  .whiteboard-card-new:hover { border-color: var(--selected); box-shadow: none; transform: none; }
+  .whiteboard-card-thumb-new { background: transparent; border-bottom: none; color: var(--muted); transition: color .15s; }
+  .whiteboard-card-new:hover .whiteboard-card-thumb-new { color: var(--selected); }
+  .whiteboard-card-new .whiteboard-card-body { align-items: center; text-align: center; }
+  .whiteboard-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .whiteboard-card-title { font-weight: 700; font-size: 13px; word-break: break-word; }
+  .whiteboard-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+  .whiteboard-card-delete { opacity: .55; cursor: pointer; flex-shrink: 0; }
+  .whiteboard-card-delete:hover { opacity: 1; color: var(--color-red); }
+
+  .whiteboard-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 60px 20px; color: var(--muted); text-align: center; }
+  .whiteboard-empty svg { opacity: .4; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 92vw; overflow: hidden; }
+  .modal-sm { width: 340px; }
+  .modal-body { padding: 20px 24px; }
+  .modal-title { margin: 0 0 10px; font-size: 15px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="project-header">
+  <div class="project-header-left">
+    <h1 class="project-title">{{ icon("pen-tool", 20) }} Whiteboard</h1>
+  </div>
+  <div class="project-header-right">
+    <a class="btn-primary" href="/whiteboard/nuevo/">+ Nueva pizarra</a>
+  </div>
+</div>
+
+<div class="whiteboard-page">
+  {% if whiteboards %}
+  <div class="whiteboard-grid">
+    <a class="whiteboard-card whiteboard-card-new" href="/whiteboard/nuevo/">
+      <div class="whiteboard-card-thumb whiteboard-card-thumb-new">{{ icon("plus", 28) }}</div>
+      <div class="whiteboard-card-body"><span class="whiteboard-card-title">Nueva pizarra</span></div>
+    </a>
+    {% for w in whiteboards %}
+    <div class="whiteboard-card" onclick="location.href='/whiteboard/{{ w.whiteboard_id }}/editar/'">
+      <div class="whiteboard-card-thumb{% if not w.thumbnail %} whiteboard-card-thumb-blank{% endif %}">
+        {% if w.thumbnail %}
+        <img src="/whiteboard/{{ w.whiteboard_id }}/imagen/" alt="{{ w.titulo }}" loading="lazy">
+        {% else %}
+        {{ icon("pen-tool", 32) }}
+        {% endif %}
+      </div>
+      <div class="whiteboard-card-body">
+        <span class="whiteboard-card-title">{{ w.titulo }}</span>
+        <div class="whiteboard-card-foot">
+          <span>{{ w.actualizada_en }}</span>
+          <span class="whiteboard-card-delete" onclick="event.stopPropagation(); confirmDeleteWhiteboard({{ w.whiteboard_id|tojson_seguro }}, {{ w.titulo|tojson_seguro }})" title="Eliminar">{{ icon("trash-2", 14) }}</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="whiteboard-empty">
+    {{ icon("pen-tool", 32) }}
+    <p>Todavía no hay ninguna pizarra.</p>
+    <a class="btn-primary btn-sm" href="/whiteboard/nuevo/">+ Crear la primera</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- MODAL: eliminar pizarra -->
+<div class="modal-overlay" id="whiteboardDeleteModal">
+  <div class="modal modal-sm">
+    <div class="modal-body">
+      <h3 class="modal-title">Eliminar pizarra</h3>
+      <p id="whiteboardDeleteText"></p>
+      <form method="post" id="whiteboardDeleteForm">{{ csrf_field() }}
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('whiteboardDeleteModal')">Cancelar</button>
+          <button type="submit" class="btn-danger">Eliminar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(function(el) {
+  el.addEventListener('click', function(e) { if (e.target === this) closeModal(this.id); });
+});
+
+function confirmDeleteWhiteboard(id, titulo) {
+  document.getElementById('whiteboardDeleteText').textContent = 'Se eliminará "' + titulo + '" de forma permanente.';
+  document.getElementById('whiteboardDeleteForm').action = '/whiteboard/' + id + '/eliminar/';
+  document.getElementById('whiteboardDeleteModal').classList.add('open');
+}
+</script>
+{% endblock %}

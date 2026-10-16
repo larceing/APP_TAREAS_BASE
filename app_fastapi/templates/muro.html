@@ -1,0 +1,231 @@
+{% extends "_base.html" %}
+{% block title %}Muro{% if actual %} · {{ actual.nombre }}{% endif %} — {{ app_nombre() }}{% endblock %}
+
+{% macro avatar(nombre, uid) %}{% set partes = (nombre or '?').replace('_', ' ').split() %}<span class="mu-avatar" style="background:hsl({{ (uid * 67) % 360 }},55%,46%)" title="{{ nombre }}">{{ (partes[0][0] ~ (partes[1][0] if partes|length > 1 else ''))|upper }}</span>{% endmacro %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/sala_chat.css">
+<style>
+  .mc-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
+  .mc-lista-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+  .mc-lista-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mc-lista-titulo h1 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .mc-btn-aviso { display: inline-flex; align-items: center; gap: 5px; color: #b45309; border: 1px solid #fcd34d; background: #fffbeb; padding: 5px 10px; border-radius: 8px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+  .mc-btn-aviso:hover { background: #fef3c7; }
+  .mc-buscar { width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg); color: var(--ink); font-family: inherit; }
+  .mc-lista { overflow-y: auto; flex: 1; padding-bottom: 8px; }
+  .mc-grupo { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 12px 16px 4px; }
+  .mc-item { display: flex; gap: 10px; align-items: center; padding: 9px 14px; color: var(--ink); border-left: 3px solid transparent; }
+  .mc-item:hover { background: var(--bg); }
+  .mc-item.mc-activo { background: color-mix(in srgb, var(--selected) 8%, var(--panel)); border-left-color: var(--selected); }
+  .mc-icono { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .mc-item-cuerpo { flex: 1; min-width: 0; }
+  .mc-item-nombre { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .mc-item-sub { font-size: 11.5px; color: var(--muted); }
+  .mc-item.mc-nuevo .mc-item-nombre { font-weight: 800; }
+  .mc-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--color-blue); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-sizing: border-box; flex-shrink: 0; }
+  .mc-proyectos { padding: 2px 0 6px; }
+  .mc-proy { display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 56px; font-size: 12.5px; color: var(--muted); }
+  .mc-proy:hover { color: var(--ink); background: var(--bg); }
+  .mc-proy.mc-activo { color: var(--selected); font-weight: 700; }
+  .mc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .mc-vacio-lista { padding: 28px 18px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .mc-conv-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .mc-conv-head .mc-icono { width: 38px; height: 38px; border-radius: 10px; }
+  .mc-conv-titulo { flex: 1; min-width: 0; }
+  .mc-conv-titulo strong { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mc-conv-titulo strong a { color: inherit; }
+  .mc-conv-titulo strong .mc-sep { color: var(--muted); font-weight: 400; margin: 0 4px; }
+  .mc-conv-titulo span { font-size: 12px; color: var(--muted); }
+  .mc-conv-titulo span a { color: var(--color-blue); font-weight: 600; }
+  .mc-avatares { display: flex; }
+  .mc-avatares .mu-avatar { width: 26px; height: 26px; font-size: 10.5px; border: 2px solid var(--panel); margin-left: -7px; }
+  .mc-avatares .mu-avatar:first-child { margin-left: 0; }
+  .mc-mas { font-size: 11.5px; color: var(--muted); align-self: center; margin-left: 4px; }
+  .mc-vacio { margin: auto; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 13.5px; max-width: 380px; line-height: 1.5; padding: 20px; }
+  .mc-vacio a { color: var(--color-blue); font-weight: 600; }
+  .mc-vacio svg { opacity: .3; }
+
+  .mc-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.45); align-items: center; justify-content: center; z-index: 150; }
+  .mc-modal-overlay.open { display: flex; }
+  .mc-modal { background: var(--panel); border-radius: 12px; padding: 20px 22px; width: 540px; max-width: 92vw; max-height: 86vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+  .mc-modal h3 { margin: 0 0 6px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .mc-hint { font-size: 12px; color: var(--muted); margin: 0 0 12px; line-height: 1.45; }
+  .mc-plantillas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+  .mc-plantillas button { text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; color: var(--ink); }
+  .mc-plantillas button:hover { border-color: #f59e0b; background: #fffbeb; }
+  .mc-campo { margin-bottom: 12px; }
+  .mc-campo > label, .mc-etiqueta { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+  .mc-campo textarea, .mc-campo select { font-family: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; width: 100%; box-sizing: border-box; background: var(--panel); color: var(--ink); }
+  .mc-etiqueta a { text-transform: none; font-weight: 600; margin-left: 6px; color: var(--color-blue); }
+  .mc-checks { max-height: 230px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .mc-check { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+  .mc-check:last-child { border-bottom: none; }
+  .mc-check:hover { background: var(--bg); }
+  .mc-check .mc-icono { width: 24px; height: 24px; border-radius: 7px; }
+  .mc-check input { margin-left: auto; width: auto; }
+  .mc-modal-acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+  .mc-btn-sec { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .mc-btn-aviso-enviar { display: inline-flex; align-items: center; gap: 6px; background: #d97706; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  @media (max-width: 900px) {
+    .mc-layout { grid-template-columns: 1fr; }
+    {% if actual %}.mc-lista-panel { display: none; }{% endif %}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mu-page">
+  <div class="mc-layout">
+    <!-- lista de muros -->
+    <section class="mu-panel mc-lista-panel">
+      <div class="mc-lista-head">
+        <div class="mc-lista-titulo">
+          <h1>{{ icon("message-circle", 18) }} Muro</h1>
+          {% if es_it_usuario %}<button type="button" class="mc-btn-aviso" onclick="mcAbrir('mcAvisoModal')" title="Aviso destacado en los muros de varios espacios a la vez">{{ icon("bell", 13) }} Aviso</button>{% endif %}
+        </div>
+        {% if muros|length > 5 %}<input type="text" class="mc-buscar" id="mcBuscar" placeholder="Buscar espacio o proyecto…" oninput="mcFiltrar(this.value)">{% endif %}
+      </div>
+      <div class="mc-lista" id="mcLista">
+        {% set ns = namespace(otros=false) %}
+        {% for m in muros %}
+        {% if loop.first and m.propio %}<div class="mc-grupo">Mis espacios</div>{% endif %}
+        {% if not m.propio and not ns.otros %}{% set ns.otros = true %}<div class="mc-grupo">Otros espacios (IT)</div>{% endif %}
+        {% set es_actual = actual and actual.id == m.id %}
+        <div class="mc-bloque" data-texto="{{ (m.nombre ~ ' ' ~ (m.proyectos|map(attribute='nombre')|join(' ')))|lower }}">
+          <a class="mc-item {% if es_actual and not proyecto_actual %}mc-activo{% endif %} {% if m.sin_leer %}mc-nuevo{% endif %}" href="/muro/?espacio={{ m.id }}">
+            <span class="mc-icono" style="background:{{ m.color }}">{{ icon("user" if m.es_personal else "users", 15) }}</span>
+            <span class="mc-item-cuerpo">
+              <span class="mc-item-nombre">{{ m.nombre }}</span>
+              <span class="mc-item-sub">{% if m.es_personal %}Personal{% else %}{{ m.n_miembros }} miembro{{ 's' if m.n_miembros != 1 }}{% endif %} · {{ m.proyectos|length }} proyecto{{ 's' if m.proyectos|length != 1 }}{% if m.actividad %} · {{ m.actividad[8:10] }}/{{ m.actividad[5:7] }}{% endif %}</span>
+            </span>
+            {% if m.sin_leer %}<span class="mc-badge" title="Mensajes sin leer">{{ m.sin_leer }}</span>{% endif %}
+          </a>
+          {% if es_actual and m.proyectos %}
+          <div class="mc-proyectos">
+            {% for p in m.proyectos %}
+            <a class="mc-proy {% if proyecto_actual and proyecto_actual.id == p.id %}mc-activo{% endif %}" href="/muro/?espacio={{ m.id }}&proyecto={{ p.id }}"><span class="mc-dot" style="background:{{ p.color }}"></span>{{ p.nombre }}</a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="mc-vacio-lista">No eres miembro de ningún espacio todavía. El muro de un espacio aparece aquí en cuanto entras en él.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- conversacion -->
+    <section class="mu-panel">
+      {% if actual %}
+      <div class="mc-conv-head">
+        <span class="mc-icono" style="background:{{ proyecto_actual.color if proyecto_actual else actual.color }}">{{ icon("columns" if proyecto_actual else ("user" if actual.es_personal else "users"), 17) }}</span>
+        <div class="mc-conv-titulo">
+          <strong>{% if proyecto_actual %}<a href="/muro/?espacio={{ actual.id }}">{{ actual.nombre }}</a><span class="mc-sep">›</span>{{ proyecto_actual.nombre }}{% else %}{{ actual.nombre }}{% endif %}</strong>
+          <span>{% if proyecto_actual %}Solo lo de este proyecto · <a href="/proyecto/{{ proyecto_actual.id }}/tablero/">abrir el proyecto</a>{% elif actual.es_personal %}Espacio personal: solo lo ves tú{% else %}Todo el espacio y sus proyectos · <a href="/espacio/{{ actual.id }}/">abrir el espacio</a>{% endif %}{% if actual.nivel == 'leer' %} · solo lectura{% endif %}</span>
+        </div>
+        {% if miembros %}
+        <div class="mc-avatares" title="Miembros del espacio">
+          {% for mi in miembros[:5] %}{{ avatar(mi.nombre_completo, mi.id) }}{% endfor %}
+          {% if miembros|length > 5 %}<span class="mc-mas">+{{ miembros|length - 5 }}</span>{% endif %}
+        </div>
+        {% endif %}
+        <button type="button" class="mu-btn-sec {% if silenciada %}mu-on{% endif %}" id="muSilenciar" onclick="muSilenciar()" title="Sin avisos en la campana por los mensajes de este muro">
+          {{ icon("bell", 13) }} <span id="muSilenciarTexto">{% if silenciada %}Silenciado{% else %}Silenciar{% endif %}</span>
+        </button>
+      </div>
+      <div class="mu-feed" id="muFeed"><div class="mu-vacio"><span>Cargando…</span></div></div>
+      {% if puede_escribir %}
+      <div class="mu-composer">
+        {% if not proyecto_actual and actual.proyectos %}
+        <select id="muPublicarEn" class="mu-publicar" title="Dónde se publica: en todo el espacio o en el muro de un proyecto">
+          <option value="">Todo el espacio</option>
+          {% for p in actual.proyectos %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <textarea id="muTexto" rows="1" maxlength="4000" placeholder="{% if proyecto_actual %}Escribe sobre {{ proyecto_actual.nombre }}…{% else %}Escribe al espacio…{% endif %} (Enter envía, Mayús+Enter salto de línea)"></textarea>
+        <button type="button" class="mu-enviar" id="muEnviar">{{ icon("arrow-right", 14) }} Enviar</button>
+      </div>
+      {% else %}
+      <div class="mu-solo-lectura">Eres Lector en este espacio: puedes leer el muro, pero no escribir.</div>
+      {% endif %}
+      {% else %}
+      <div class="mc-vacio">{{ icon("message-circle", 44) }}<span>Aquí se habla del trabajo: cada espacio tiene su muro, con lo que pasa en sus proyectos y lo que escribís sus miembros. Para un mensaje a una sola persona, usa el <a href="/buzon/">Buzón</a>.</span></div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+{% if es_it_usuario %}
+<!-- MODAL: aviso a varios espacios (solo IT) -->
+<div class="mc-modal-overlay" id="mcAvisoModal">
+  <div class="mc-modal">
+    <h3>{{ icon("bell", 16) }} Aviso</h3>
+    <p class="mc-hint">Sale destacado en el muro de los espacios que elijas y llega a la campana de todos sus miembros (una sola vez por persona). Las plantillas marcan todos los espacios.</p>
+    <div class="mc-plantillas">
+      {% for etiqueta, texto in plantillas %}<button type="button" onclick="mcPlantilla({{ texto|tojson|forceescape }})">{{ etiqueta }}</button>{% endfor %}
+    </div>
+    <form method="post" action="/muro/aviso/">{{ csrf_field() }}
+      <input type="hidden" name="volver" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <div class="mc-campo"><label>Aviso</label><textarea name="texto" id="mcAvisoTexto" rows="3" maxlength="4000" required></textarea></div>
+      <div class="mc-campo"><span class="mc-etiqueta">Espacios <a href="#" onclick="mcMarcar(true);return false;">todos</a> · <a href="#" style="margin-left:0" onclick="mcMarcar(false);return false;">ninguno</a></span>
+        <div class="mc-checks" id="mcAvisoEspacios">
+          {% for e in espacios_aviso %}
+          <label class="mc-check"><span class="mc-icono" style="background:{{ e.color }}">{{ icon("user" if e.es_personal else "users", 12) }}</span>{{ e.nombre }}{% if e.es_personal %} <span style="color:var(--muted);font-size:11.5px;">(personal)</span>{% endif %}<input type="checkbox" name="espacios" value="{{ e.id }}"></label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="mc-campo"><label>Desaparece a los</label>
+        <select name="duracion"><option value="1">1 día</option><option value="3">3 días</option><option value="7">7 días</option><option value="0">Sin caducidad</option></select>
+      </div>
+      <div class="mc-modal-acciones">
+        <button type="button" class="mc-btn-sec" onclick="mcCerrar('mcAvisoModal')">Cancelar</button>
+        <button type="submit" class="mc-btn-aviso-enviar">{{ icon("bell", 13) }} Publicar aviso</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script src="/static/js/sala_chat.js"></script>
+<script>
+function mcAbrir(id) { document.getElementById(id).classList.add('open'); }
+function mcCerrar(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.mc-modal-overlay').forEach(function(m) {
+  m.addEventListener('click', function(e) { if (e.target === m) m.classList.remove('open'); });
+});
+function mcMarcar(si) { document.querySelectorAll('#mcAvisoEspacios input').forEach(function(cb) { cb.checked = si; }); }
+function mcPlantilla(texto) { document.getElementById('mcAvisoTexto').value = texto; mcMarcar(true); }
+function mcFiltrar(q) {
+  q = q.trim().toLowerCase();
+  document.querySelectorAll('.mc-bloque').forEach(function(b) { b.style.display = !q || b.dataset.texto.indexOf(q) !== -1 ? '' : 'none'; });
+}
+
+{% if actual %}
+var muSala = SalaChat.iniciar({
+  base: '{% if proyecto_actual %}/proyecto/{{ proyecto_actual.id }}/muro/{% else %}/espacio/{{ actual.id }}/muro/{% endif %}',
+  yo: {{ user_id }},
+  esIT: {{ 'true' if es_it_usuario else 'false' }},
+  mostrarProyecto: {{ 'false' if proyecto_actual else 'true' }},
+  proyectoSelectId: 'muPublicarEn',
+  borrarAvisoUrl: function(id) { return '/muro/aviso/' + id + '/borrar/'; },
+  iconos: {
+    'completó': '{{ icon("check-circle", 12) }}', 'reabrió': '{{ icon("arrow-right", 12) }}',
+    'empezó': '{{ icon("zap", 12) }}', 'creó': '{{ icon("plus", 12) }}', 'eliminó': '{{ icon("trash-2", 12) }}',
+    'restauró': '{{ icon("arrow-right", 12) }}', 'asignó': '{{ icon("user", 12) }}', 'reasignó': '{{ icon("user", 12) }}',
+    'añadió': '{{ icon("users", 12) }}', 'quitó': '{{ icon("users", 12) }}', 'cambió': '{{ icon("users", 12) }}'
+  },
+  iconoDefecto: '{{ icon("activity", 12) }}',
+  iconoBorrar: '{{ icon("trash-2", 12) }}',
+  iconoAviso: '{{ icon("bell", 14) }}',
+  vacioHtml: '<div class="mu-vacio">{{ icon("message-circle", 34) }}<span>Todavía no hay nada{% if proyecto_actual %} en este proyecto{% endif %}. Aquí irán apareciendo solas las tareas que se crean, se asignan o se completan{% if puede_escribir %}, y lo que escribáis{% endif %}.</span></div>'
+});
+function muSilenciar() {
+  muSala.silenciar().then(function(r) {
+    document.getElementById('muSilenciarTexto').textContent = r.silenciada ? 'Silenciado' : 'Silenciar';
+    document.getElementById('muSilenciar').classList.toggle('mu-on', r.silenciada);
+  });
+}
+{% endif %}
+</script>
+{% endblock %}

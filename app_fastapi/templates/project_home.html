@@ -1,0 +1,275 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+
+  .project-content { flex: 1; overflow-y: auto; padding: 24px; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; }
+  .metric-value { font-size: 28px; font-weight: 800; color: var(--ink); }
+  .metric-value[data-status="Pendiente"] { color: var(--color-orange); }
+  .metric-value[data-status="En curso"]  { color: var(--color-blue); }
+  .metric-value[data-status="En espera"] { color: var(--color-amber); }
+  .metric-value[data-status="Hecha"]     { color: var(--color-green); }
+  .metric-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .metric-bar   { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; }
+  .metric-bar-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+
+  .resumen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .resumen-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; }
+  .resumen-section-full { grid-column: 1 / -1; }
+  .resumen-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .resumen-section-header h3 { font-size: 14px; font-weight: 700; }
+  @media (max-width: 900px) { .resumen-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .btn-icon { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 2px 4px; transition: color .15s; }
+  .btn-icon:hover { color: var(--ink); }
+  .btn-icon-red:hover { color: var(--color-red); }
+
+  .milestone-list { display: flex; flex-direction: column; gap: 8px; }
+  .milestone-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: var(--bg); }
+  .milestone-done { opacity: .6; }
+  .milestone-icon { font-size: 12px; flex-shrink: 0; }
+  .milestone-body { flex: 1; }
+  .milestone-name { font-size: 13px; font-weight: 600; }
+  .milestone-date { font-size: 11px; color: var(--muted); }
+
+  .category-list { display: flex; flex-direction: column; gap: 6px; }
+  .category-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: var(--bg); }
+  .cat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .cat-item-name  { flex: 1; font-size: 13px; }
+  .cat-item-count { font-size: 11px; color: var(--muted); }
+
+  .task-list-simple { display: flex; flex-direction: column; gap: 6px; }
+  .task-simple-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: var(--bg); font-size: 13px; }
+  .task-simple-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; background: var(--color-orange-tint); color: var(--color-orange-dark); }
+  .task-simple-status[data-status="En curso"]  { background: var(--color-blue-tint); color: var(--color-blue-dark); }
+  .task-simple-status[data-status="En espera"] { background: var(--color-amber-tint); color: var(--color-amber-dark); }
+  .task-simple-status[data-status="Hecha"]     { background: var(--color-green-tint); color: var(--color-green-dark); }
+  .task-simple-title    { flex: 1; font-weight: 600; }
+  .task-simple-cat      { font-size: 11px; color: var(--muted); }
+  .task-simple-priority { font-size: 11px; font-weight: 600; color: var(--muted); }
+  .task-simple-priority[data-priority="Alta"]   { color: var(--color-red); }
+  .task-simple-priority[data-priority="Normal"] { color: var(--color-blue); }
+
+  .activity-feed { display: flex; flex-direction: column; gap: 4px; }
+  .activity-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; }
+  .activity-item:hover { background: var(--bg); }
+  .activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-orange); }
+  .activity-dot[data-status="En curso"]  { background: var(--color-blue); }
+  .activity-dot[data-status="En espera"] { background: var(--color-amber); }
+  .activity-dot[data-status="Hecha"]     { background: var(--color-green); }
+  .activity-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .activity-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .activity-meta { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .activity-status { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: var(--color-orange-tint); color: var(--color-orange-dark); }
+  .activity-status[data-status="En curso"]  { background: var(--color-blue-tint); color: var(--color-blue-dark); }
+  .activity-status[data-status="En espera"] { background: var(--color-amber-tint); color: var(--color-amber-dark); }
+  .activity-status[data-status="Hecha"]     { background: var(--color-green-tint); color: var(--color-green-dark); }
+
+  .empty-state { color: var(--muted); font-size: 13px; padding: 12px 0; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 340px; max-width: 92vw; }
+  .modal-body { padding: 20px 24px; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  input[type=text] { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .color-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .color-swatch input { display: none; }
+  .color-swatch span { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+  .color-swatch input:checked + span { border-color: var(--ink); transform: scale(1.15); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc">{{ proyecto.descripcion }}</p>{% endif %}
+    <div class="project-meta-row">
+      <span class="proj-status-badge" data-estado="{{ proyecto.estado }}">{{ proyecto.estado }}</span>
+      {% if proyecto.responsable %}<span class="project-meta-item">{{ icon("user", 13) }} {{ proyecto.responsable }}</span>{% endif %}
+      {% if proyecto.fecha_inicio %}<span class="project-meta-item">{{ icon("calendar", 13) }} {{ proyecto.fecha_inicio }}</span>{% endif %}
+      {% if proyecto.fecha_fin %}<span class="project-meta-item">{{ icon("flag", 13) }} {{ proyecto.fecha_fin }}</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="project-content">
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-value">{{ total }}</div>
+      <div class="metric-label">Tareas totales</div>
+    </div>
+    {% for status in statuses %}
+    <div class="metric-card">
+      <div class="metric-value" data-status="{{ status }}">{{ by_status.get(status, 0) }}</div>
+      <div class="metric-label">{{ status }}</div>
+    </div>
+    {% endfor %}
+    <div class="metric-card">
+      <div class="metric-value">{{ done_pct }}%</div>
+      <div class="metric-label">Completado</div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:{{ done_pct }}%;background:{{ proyecto.color }}"></div></div>
+    </div>
+  </div>
+
+  <div class="resumen-grid">
+    <!-- hitos -->
+    <div class="resumen-section">
+      <div class="resumen-section-header">
+        <h3>Hitos</h3>
+        <button class="btn-secondary btn-sm" type="button" onclick="openMilestoneModal('new','','','',false,{{ proyecto.id|tojson_seguro }})">+ Añadir</button>
+      </div>
+      {% if proj_ms %}
+      <div class="milestone-list">
+        {% for m in proj_ms %}
+        <div class="milestone-item {% if m.completado %}milestone-done{% endif %}">
+          <span class="milestone-icon" style="color:{% if m.completado %}#16a34a{% else %}{{ proyecto.color }}{% endif %}">
+            {% if m.completado %}{{ icon("check-circle", 13) }}{% else %}{{ icon("circle", 13) }}{% endif %}
+          </span>
+          <div class="milestone-body">
+            <div class="milestone-name">{{ m.nombre }}</div>
+            {% if m.fecha %}<div class="milestone-date">{{ m.fecha }}</div>{% endif %}
+          </div>
+          <button class="btn-icon" type="button" onclick="openMilestoneModal('edit',{{ m.milestone_id|tojson_seguro }},{{ m.nombre|tojson_seguro }},{{ m.fecha|tojson_seguro }},{{ 'true' if m.completado else 'false' }},{{ proyecto.id|tojson_seguro }})">{{ icon("edit-2", 12) }}</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">Sin hitos todavía.</p>
+      {% endif %}
+    </div>
+
+    <!-- categorias globales -->
+    <div class="resumen-section">
+      <div class="resumen-section-header">
+        <h3>Categorías</h3>
+        <button class="btn-secondary btn-sm" type="button" onclick="openResumenCatModal('new')">+ Añadir</button>
+      </div>
+      {% if proj_cats %}
+      <div class="category-list">
+        {% for cat in proj_cats %}
+        <div class="category-item">
+          <span class="cat-dot" style="background:{{ cat.color }}"></span>
+          <span class="cat-item-name">{{ cat.nombre }}</span>
+          <span class="cat-item-count">{{ cat.task_count }}</span>
+          <button class="btn-icon" type="button" onclick="openResumenCatModal('edit',{{ cat.id|tojson_seguro }},{{ cat.nombre|tojson_seguro }},{{ cat.color|tojson_seguro }})">{{ icon("edit-2", 12) }}</button>
+          <form method="post" action="/categoria/{{ cat.id }}/toggle/" id="catDelForm-{{ cat.id }}"
+                onsubmit="event.preventDefault(); showConfirm('¿Eliminar la categoría «{{ cat.nombre }}»?', function(){ document.getElementById('catDelForm-{{ cat.id }}').submit(); }, {title:'Eliminar categoría', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+            <button type="submit" class="btn-icon btn-icon-red">{{ icon("x", 12) }}</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">Sin categorías todavía.</p>
+      {% endif %}
+    </div>
+
+    <!-- tareas activas -->
+    <div class="resumen-section resumen-section-full">
+      <div class="resumen-section-header">
+        <h3>Tareas activas</h3>
+        <a href="/proyecto/{{ proyecto.id }}/tablero/" class="btn-secondary btn-sm">Ver tablero →</a>
+      </div>
+      {% set activas = proj_tasks|selectattr("status", "ne", "Hecha")|list %}
+      {% if activas %}
+      <div class="task-list-simple">
+        {% for t in activas %}
+        <div class="task-simple-item">
+          <span class="task-simple-status" data-status="{{ t.status }}">{{ t.status }}</span>
+          <span class="task-simple-title">{{ t.title }}</span>
+          <span class="task-simple-cat">{{ t.category }}</span>
+          <span class="task-simple-priority" data-priority="{{ t.priority }}">{{ t.priority }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">Sin tareas activas.</p>
+      {% endif %}
+    </div>
+
+    <!-- actividad reciente -->
+    {% if recent_activity %}
+    <div class="resumen-section resumen-section-full">
+      <div class="resumen-section-header"><h3>Actividad reciente</h3></div>
+      <div class="activity-feed">
+        {% for t in recent_activity %}
+        <div class="activity-item">
+          <span class="activity-dot" data-status="{{ t.status }}"></span>
+          <div class="activity-body">
+            <span class="activity-title">{{ t.title }}</span>
+            <span class="activity-meta">
+              <span class="activity-status" data-status="{{ t.status }}">{{ t.status }}</span>
+              {{ icon("clock", 11) }} {{ t.actualizada_en or t.creada_en }}
+            </span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- MODAL: categoria global (crear/editar) -- local a esta pagina, mismos
+     endpoints que Configuracion -> Categorias (/categoria/nueva/,
+     /categoria/<id>/editar/), nombre de funcion distinto
+     (openResumenCatModal) para no chocar con el openCategoriaModal propio
+     de configuracion.html si algun dia comparten JS. -->
+<div class="modal-overlay" id="resumenCatModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title" id="rcmTitle">Nueva categoría</h3>
+      <form method="post" id="resumenCatForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="rcm_nombre" required></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="color-picker" id="rcm_colorPicker">
+            {% for c in ["#2563eb","#7c3aed","#db2777","#ea580c","#16a34a","#0891b2","#9333ea","#b45309","#0f766e","#c2410c","#6b7280"] %}
+            <label class="color-swatch"><input type="radio" name="color" value="{{ c }}" {% if loop.first %}checked{% endif %}><span style="background:{{ c }}"></span></label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('resumenCatModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.getElementById('resumenCatModal').addEventListener('click', function(e) { if (e.target === this) closeModal('resumenCatModal'); });
+
+function openResumenCatModal(mode, cid, nombre, color) {
+  var modal = document.getElementById('resumenCatModal');
+  var form = document.getElementById('resumenCatForm');
+  document.getElementById('rcmTitle').textContent = mode === 'new' ? 'Nueva categoría' : 'Editar categoría';
+  form.action = mode === 'new' ? '/categoria/nueva/' : '/categoria/' + cid + '/editar/';
+  document.getElementById('rcm_nombre').value = mode === 'new' ? '' : (nombre || '');
+  document.querySelectorAll('#rcm_colorPicker input').forEach(function(r, i) {
+    r.checked = mode === 'new' ? (i === 0) : (r.value === color);
+  });
+  modal.classList.add('open');
+}
+</script>
+{% endblock %}

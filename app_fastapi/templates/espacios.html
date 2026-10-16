@@ -1,0 +1,89 @@
+{% extends "_base.html" %}
+{% block title %}Espacios — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .page { width: 100%; box-sizing: border-box; padding: 32px; }
+  .hero-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; }
+  .hero-top h1 { font-size: 22px; margin: 0; }
+  .hero-top a { font-size: 13px; font-weight: 700; color: var(--color-blue); display: inline-flex; align-items: center; gap: 5px; }
+  .section-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  .espacio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .espacio-card {
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; text-decoration: none; box-shadow: var(--shadow-sm);
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .espacio-card:hover { box-shadow: var(--shadow-md); }
+  .espacio-card-icon {
+    width: 38px; height: 38px; border-radius: var(--radius-sm); flex-shrink: 0;
+    background: color-mix(in srgb, var(--espacio-color) 16%, var(--panel)); color: var(--espacio-color);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .espacio-card-name { font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+  .espacio-card-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--selected); background: rgba(124,58,237,.12); padding: 1px 7px; border-radius: 9px; }
+  .espacio-card-meta { font-size: 12px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+  .espacio-empty { padding: 14px 4px; font-size: 12.5px; color: var(--muted); }
+  .espacio-new { margin-bottom: 24px; }
+  .espacio-new summary { font-size: 13px; font-weight: 700; color: var(--color-blue); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; list-style: none; }
+  .espacio-new summary::-webkit-details-marker { display: none; }
+  .espacio-new-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+  .espacio-new-form .form-group { margin: 0; }
+  .espacio-new-form label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .espacio-new-form input[type="text"] { padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg); color: var(--ink); }
+  .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="hero-top">
+    <h1>Espacios</h1>
+  </div>
+
+  <details class="espacio-new">
+    <summary>{{ icon("plus", 13) }} Nuevo espacio</summary>
+    <form class="espacio-new-form" method="post" action="/espacio/nuevo/">{{ csrf_field() }}
+      <div class="form-group">
+        <label>Nombre del espacio</label>
+        <input type="text" name="nombre" placeholder="Ej. Equipo IT" required>
+      </div>
+      <div class="color-picker">
+        {% for color in palette %}<label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>{% endfor %}
+      </div>
+      <button class="btn-primary btn-sm" type="submit">Crear</button>
+    </form>
+  </details>
+
+  {% if personales %}
+  <div class="section-title">Personal</div>
+  <div class="espacio-grid">
+    {% for e in personales %}
+    <a class="espacio-card" style="--espacio-color:{{ e.color }}" href="/espacio/{{ e.id }}/">
+      <div class="espacio-card-icon">{{ icon("user", 18) }}</div>
+      <div class="espacio-card-name">{{ e.nombre }} <span class="espacio-card-badge">Personal</span></div>
+      <div class="espacio-card-meta">{{ icon("folder", 12) }} {{ e.n_proyectos }} proyecto{{ 's' if e.n_proyectos != 1 }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if compartidos %}
+  <div class="section-title">Compartidos</div>
+  <div class="espacio-grid">
+    {% for e in compartidos %}
+    <a class="espacio-card" style="--espacio-color:{{ e.color }}" href="/espacio/{{ e.id }}/">
+      <div class="espacio-card-icon">{{ icon("users", 18) }}</div>
+      <div class="espacio-card-name">{{ e.nombre }}</div>
+      <div class="espacio-card-meta">{{ icon("users", 12) }} {{ e.n_miembros }} miembro{{ 's' if e.n_miembros != 1 }} · {{ icon("folder", 12) }} {{ e.n_proyectos }} proyecto{{ 's' if e.n_proyectos != 1 }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not personales and not compartidos %}
+  <p class="espacio-empty">Sin espacios todavía.</p>
+  {% endif %}
+</div>
+{% endblock %}

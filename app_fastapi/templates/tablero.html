@@ -1,0 +1,1052 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-danger { background: var(--color-red); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+
+  /* ── toolbar -- igual que static/css/main.css del original ──────────────── */
+  .toolbar { display: flex; flex-direction: column; gap: 0; background: var(--panel); padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .toolbar.collapsed { display: none; }
+  .toolbar-top { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+  .toolbar-search { display: flex; gap: 8px; flex: 1; }
+  .toolbar-search input:not([type="hidden"]) { padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); outline: none; transition: border-color .15s; color: var(--ink); }
+  .toolbar-search input[type="text"] { flex: 1; }
+  .toolbar-search input:focus { border-color: var(--selected); }
+  .toolbar-filter-row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px 22px; padding: 12px 0 14px; border-top: 1px solid var(--border); }
+  .toolbar-filter-row .form-group { margin-bottom: 0; min-width: 140px; }
+  .toolbar-filter-row select { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); outline: none; }
+  .toolbar-filter-row select:focus { border-color: var(--selected); }
+  .toolbar-filter-dates { display: flex; align-items: center; gap: 6px; }
+  .toolbar-filter-dates input[type="date"] { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 12px; outline: none; }
+  .toolbar-filter-dates input[type="date"]:focus { border-color: var(--selected); }
+  .toolbar-date-sep { font-size: 12px; color: var(--muted); }
+  .toolbar-today-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--muted); font-size: 12px; font-weight: 600; transition: all .15s; white-space: nowrap; }
+  .toolbar-today-btn:hover { border-color: var(--selected); color: var(--selected); }
+  .toolbar-clear-date { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; transition: all .15s; flex-shrink: 0; }
+  .toolbar-clear-date:hover { border-color: var(--color-red); color: var(--color-red); background: var(--color-red-tint); }
+  .toolbar-icon-btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; transition: background .15s, color .15s; flex-shrink: 0; }
+  .toolbar-icon-btn:hover { background: var(--bg); color: var(--ink); }
+  .toolbar-icon-btn.is-active { border-color: var(--selected); color: var(--selected); }
+  .filter-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--selected); margin-left: 2px; }
+  .prio-pills { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .prio-pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); color: var(--muted); background: var(--panel); white-space: nowrap; transition: background .15s, color .15s, border-color .15s; }
+  .prio-pill:hover { background: var(--bg); color: var(--ink); }
+  .prio-pill.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .view-tabs { display: flex; background: #e8edf5; border-radius: 6px; padding: 3px; }
+  .view-tab { padding: 5px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .view-tab.active { background: #fff; }
+  .sprint-picker-select { border-color: #93c5fd !important; color: #1d4ed8; font-weight: 600; max-width: 220px; }
+  .sprint-picker-compact { height: 28px; padding: 4px 8px; font-size: 12px; max-width: 200px; }
+  /* botones de acción del Tablero (toggle de filtros + respaldo) que viven en
+     _project_tabs.html -- no en esta plantilla -- ver el include mas abajo. */
+  .project-tabs-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .card-sprint-badge { display: inline-block; font-size: 10px; font-weight: 700; color: #2563eb; margin-top: 3px; }
+
+  .board { display: flex; gap: 0; flex: 1; overflow-x: auto; overflow-y: hidden; padding: 14px 14px 0; }
+  .board-column { flex: 1; min-width: 250px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-right: 10px; overflow: hidden; max-height: calc(100vh - 52px - 30px - 130px); }
+  .board-column:last-child { margin-right: 0; }
+  .column-header { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; flex-shrink: 0; }
+  .column-accent { width: 5px; height: 24px; border-radius: 3px; flex-shrink: 0; }
+  .column-title { font-weight: 700; font-size: 14px; flex: 1; }
+  .column-count { font-size: 12px; color: var(--muted); background: var(--bg); padding: 2px 8px; border-radius: 10px; }
+  .column-wip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; background: #f3f4f6; color: var(--muted); border: 1px solid var(--border); white-space: nowrap; }
+  .column-wip.wip-exceeded { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+  .column-cards { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+  .column-empty { text-align: center; color: var(--muted); padding: 24px 0; font-size: 13px; }
+
+  .col-mgmt-wrap { position: relative; margin-left: auto; }
+  .col-mgmt-btn { background: none; border: none; cursor: pointer; font-size: 16px; color: #9ca3af; padding: 0 4px; line-height: 1; border-radius: 4px; }
+  .col-mgmt-btn:hover { color: #374151; background: #f3f4f6; }
+  .col-mgmt-menu { display: none; position: absolute; right: 0; top: 100%; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: var(--shadow-md); z-index: 200; min-width: 170px; overflow: hidden; }
+  .col-mgmt-menu.open { display: block; }
+  .col-mgmt-menu button, .col-mgmt-menu form { display: block; width: 100%; }
+  .col-mgmt-menu button { background: none; border: none; cursor: pointer; padding: 8px 14px; font-size: 13px; color: #374151; text-align: left; width: 100%; }
+  .col-mgmt-menu button:hover { background: #f9fafb; }
+  .col-mgmt-menu .col-mgmt-delete { color: #dc2626; }
+  .col-mgmt-menu .col-mgmt-delete:hover { background: #fef2f2; }
+
+  .board-add-col { display: flex; align-items: flex-start; padding-top: 0; min-width: 60px; flex-shrink: 0; }
+  .board-add-col-btn { background: none; border: 2px dashed #d1d5db; border-radius: 8px; color: #9ca3af; font-size: 13px; font-weight: 600; cursor: pointer; padding: 10px 16px; white-space: nowrap; }
+  .board-add-col-btn:hover { border-color: #6b7280; color: #374151; }
+
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; padding: 7px 8px; cursor: grab; position: relative; }
+  .card:hover { box-shadow: var(--shadow-sm); }
+  .card-deleted { opacity: .6; }
+  .card-due-soon { outline: 2px solid #fdba74; outline-offset: -2px; }
+  .card-overdue { outline: 2px solid #fca5a5; outline-offset: -2px; }
+  .card-due-soon .card-date { color: #ea580c !important; font-weight: 600; }
+  .card-overdue .card-date { color: #dc2626 !important; font-weight: 600; }
+  .card-stripe { height: 2px; border-radius: 2px; margin: -7px -8px 5px; }
+  .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+  .card-priority { font-size: 10px; font-weight: 700; color: #fff; padding: 1px 7px; border-radius: 10px; background: var(--color-gray, #6b7280); }
+  .card-priority[data-priority="Alta"] { background: var(--color-red); }
+  .card-priority[data-priority="Normal"] { background: var(--color-blue); }
+  .card-order { font-size: 10px; color: var(--muted); }
+  .card-mantis-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; color: var(--color-blue-dark); background: var(--color-blue-tint); padding: 1px 6px; border-radius: 8px; text-decoration: none; }
+  .card-mantis-badge:hover { text-decoration: underline; }
+  .card-ia-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; color: var(--color-violet-dark); background: var(--color-violet-tint); padding: 1px 6px; border-radius: 8px; }
+  .card-title { font-weight: 700; font-size: 13px; margin-bottom: 2px; line-height: 1.35; }
+  .card-category { font-size: 10.5px; color: var(--muted); margin-bottom: 2px; }
+  .card-date { font-size: 10.5px; color: var(--muted); display: flex; align-items: center; gap: 3px; margin-top: 2px; }
+  .card-next { font-size: 11px; color: #334155; margin-top: 4px; line-height: 1.35; }
+  .card-subtasks-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); background: var(--bg); border-radius: 10px; padding: 1px 7px; border: 1px solid var(--border); margin-top: 4px; }
+  .card-avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--bg); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 800; flex-shrink: 0; border: 1px solid var(--border); }
+  .card-anclada { color: var(--selected); font-size: 11px; }
+  .card-actions { display: flex; gap: 5px; margin-top: 5px; opacity: 0; transition: opacity .15s; }
+  .card:hover .card-actions { opacity: 1; }
+  .card-btn { background: var(--bg); border: 1px solid var(--border); color: var(--ink); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; }
+  .card-btn:hover { background: var(--border); }
+  .card-btn-red { color: var(--color-red); border-color: #fca5a5; }
+  .card-btn-red:hover { background: var(--color-red-tint); }
+  .card-btn-green { color: var(--color-green); border-color: #86efac; }
+  .card-btn-green:hover { background: #dcfce7; }
+
+  .column-quick-add { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .quick-add-input { flex: 1; border: 1px solid transparent; border-radius: 5px; padding: 5px 8px; font-size: 12px; background: transparent; color: var(--ink); outline: none; }
+  .quick-add-input:focus { border-color: var(--border); background: var(--bg); }
+  .quick-add-btn { flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color: var(--muted); display: inline-flex; align-items: center; }
+  .quick-add-btn:hover { background: var(--bg); color: var(--ink); border-color: var(--ink); }
+
+  .task-ghost { opacity: .35; background: #dbeafe !important; border: 2px dashed #2563eb !important; border-radius: 8px; }
+  .task-chosen { box-shadow: var(--shadow-lg) !important; transform: rotate(1.5deg); cursor: grabbing !important; z-index: 99; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 92vw; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+  .modal-lg { width: 660px; }
+  .modal-sm { width: 340px; }
+  .modal-stripe { height: 6px; flex-shrink: 0; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-check { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .form-check input { width: auto; }
+  .form-check label { margin: 0; text-transform: none; font-weight: 400; font-size: 13px; }
+  .form-hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; width: 100%; }
+  input[type=text], input[type=number], input[type=date], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .input-lg { font-size: 16px; font-weight: 700; padding: 10px 12px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .color-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .color-swatch input { display: none; }
+  .color-swatch span { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+  .color-swatch input:checked + span { border-color: var(--ink); transform: scale(1.15); }
+  .col-color-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .col-color-swatch { cursor: pointer; }
+  .col-color-swatch input[type=radio] { display: none; }
+  .swatch-dot { display: block; width: 24px; height: 24px; border-radius: 50%; border: 3px solid transparent; }
+  .col-color-swatch input[type=radio]:checked + .swatch-dot { border-color: #1e293b; }
+  .col-done-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; cursor: pointer; }
+  .type-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .type-option { cursor: pointer; display: block; }
+  .type-option input[type=radio] { display: none; }
+  .type-option-body { border: 2px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; background: var(--bg); }
+  .type-option input:checked + .type-option-body { border-color: var(--selected); background: #f5f3ff; }
+  .type-option-icon { font-size: 20px; margin-bottom: 4px; display: flex; justify-content: center; }
+  .type-option-name { font-weight: 700; font-size: 13px; }
+  .type-option-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .subtask-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .subtask-row { display: flex; align-items: center; gap: 6px; }
+  .subtask-check { width: 15px; height: 15px; flex-shrink: 0; }
+  .subtask-text { flex: 1; font-size: 13px; padding: 3px 6px; }
+  .subtask-del { background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 2px; }
+  .subtask-del:hover { color: #dc2626; }
+
+  /* ── panel de detalle lateral de tarea ─────────────────────────────────── */
+  .detail-panel { position: fixed; top: 52px; right: -380px; bottom: 0; width: 360px; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -4px 0 20px rgba(0,0,0,.08); z-index: 300; overflow-y: auto; transition: right .25s ease; display: flex; flex-direction: column; }
+  .detail-panel.open { right: 0; }
+  .detail-header { position: relative; height: 6px; flex-shrink: 0; }
+  .detail-stripe { height: 6px; width: 100%; }
+  .detail-close { position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 16px; color: var(--muted); cursor: pointer; z-index: 1; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+  .detail-close:hover { background: var(--bg); }
+  .detail-content { padding: 20px; flex: 1; }
+  .detail-meta { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; margin-top: 16px; }
+  .detail-title { font-size: 18px; font-weight: 700; line-height: 1.4; color: var(--ink); margin-bottom: 12px; }
+  .detail-section { margin-bottom: 20px; }
+  .detail-section-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+  .detail-section-text { font-size: 13px; color: var(--ink); line-height: 1.6; white-space: pre-wrap; }
+  .detail-next { background: #f0f9ff; border-radius: 6px; padding: 10px 12px; border-left: 3px solid #2563eb; }
+  .detail-info { display: flex; flex-direction: column; gap: 6px; }
+  .detail-info-row { display: flex; justify-content: space-between; font-size: 12px; }
+  .detail-info-row span:first-child { color: var(--muted); font-weight: 600; }
+  .detail-info-row span:last-child { color: var(--ink); }
+  .detail-actions { margin-top: 24px; display: flex; gap: var(--gap-btn); }
+  .detail-btn { width: 100%; padding: 10px; font-size: 14px; }
+  .detail-subtask-list { display: flex; flex-direction: column; gap: 4px; }
+  .detail-subtask-item { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .detail-subtask-check { width: 15px; height: 15px; flex-shrink: 0; }
+  .detail-subtask-item.done > span { text-decoration: line-through; color: var(--muted); }
+  .detail-sub-count { font-weight: 400; color: var(--muted); }
+  .detail-docs { padding: 0 0 4px; }
+  .detail-docs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .detail-upload-btn { cursor: pointer; font-size: 15px; padding: 2px 6px; border-radius: 5px; }
+  .detail-upload-btn:hover { background: var(--bg); }
+  .detail-doc-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .detail-doc-icon { font-size: 16px; flex-shrink: 0; }
+  .detail-doc-info { flex: 1; min-width: 0; }
+  .detail-doc-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail-doc-meta { font-size: 11px; color: var(--muted); }
+  .detail-docs-empty { font-size: 12px; color: var(--muted); padding: 6px 0; }
+  .card-selected { border-color: var(--selected) !important; border-width: 2px !important; box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+  .board-with-detail { padding-right: 374px; }
+  .detail-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 299; }
+  .detail-overlay.open { display: block; }
+  @media (max-width: 768px) {
+    .detail-panel { width: 100%; right: -100%; }
+    .board-with-detail { padding-right: 0; }
+  }
+
+  /* ── selección múltiple + borrado en bloque ────────────────────────────── */
+  .card-select-wrap { position: relative; width: 18px; height: 18px; flex-shrink: 0; display: none; }
+  .card-select-wrap label { display: block; width: 100%; height: 100%; cursor: pointer; }
+  .card-select { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border); background: var(--panel); cursor: pointer; transition: background .15s, border-color .15s; position: absolute; top: 0; left: 0; margin: 0; }
+  .card-select:checked { background: var(--selected); border-color: var(--selected); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"); background-size: 10px; background-repeat: no-repeat; background-position: center; }
+  .card:hover .card-select-wrap, .board-bulk-active .card-select-wrap { display: block; }
+  .bulk-bar { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); display: flex; align-items: center; gap: var(--gap-btn); background: var(--ink); color: #fff; border-radius: 24px; padding: 10px 20px; box-shadow: 0 4px 20px rgba(0,0,0,.3); z-index: 500; transition: transform .2s ease; white-space: nowrap; }
+  .bulk-bar.visible { transform: translateX(-50%) translateY(0); }
+
+  /* ── atajos de teclado ──────────────────────────────────────────────────── */
+  .toolbar-icon-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; transition: background .15s, color .15s; flex-shrink: 0; }
+  .toolbar-icon-btn:hover { background: var(--bg); color: var(--ink); }
+  .shortcuts-list { display: flex; flex-direction: column; gap: 0; }
+  .shortcut-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+  .shortcut-row:last-child { border-bottom: none; }
+  .shortcut-row span { font-size: 13px; color: var(--ink); }
+  kbd { display: inline-block; padding: 2px 7px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--bg); color: var(--muted); font-family: 'Segoe UI', system-ui, monospace; font-size: 11px; font-weight: 600; box-shadow: 0 1px 0 var(--border); white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc">{{ proyecto.descripcion }}</p>{% endif %}
+    <div class="project-meta-row">
+      <span class="proj-status-badge" data-estado="{{ proyecto.estado }}">{{ proyecto.estado }}</span>
+      {% if proyecto.responsable %}<span class="project-meta-item">{{ icon("user", 12) }} {{ proyecto.responsable }}</span>{% endif %}
+      {% if proyecto.fecha_inicio %}<span class="project-meta-item">Inicio: {{ proyecto.fecha_inicio }}</span>{% endif %}
+      {% if proyecto.fecha_fin %}<span class="project-meta-item">Fin: {{ proyecto.fecha_fin }}</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% set show_board_actions = true %}
+{# Conserva el sprint elegido al filtrar: sin esto, cualquier filtro/vista
+   pierde ?sprint_id= y el servidor vuelve al sprint activo. #}
+{% set sp_qs = '&sprint_id=' ~ sprint.sprint_id if sprint else '' %}
+{% set hay_filtro_activo = query or cat != 'Todas' or priority_filter != 'Todas' or sistema_filter != 'Todos' or iniciativa_filter != 'Todas' or ia_filter != 'Todas' or date_from or date_to or view != 'Activas' %}
+{% include "_project_tabs.html" %}
+
+<!-- Barra de herramientas -- igual que core/templates/board.html: colapsada
+     por defecto salvo que ya haya un filtro/busqueda/vista no-Activas
+     aplicado, para no esconder por que esta filtrado el tablero. El boton
+     que la abre/cierra (toolbarToggleBtn, icono "sliders") y su respaldo
+     "+ Nueva tarea" viven en _project_tabs.html (arriba), FUERA de este
+     div -- si vivieran dentro, se ocultarian con el resto al colapsarse y
+     no habria forma de volver a abrirla. -->
+<div class="toolbar {% if not hay_filtro_activo %}collapsed{% endif %}" id="boardToolbar">
+  <div class="toolbar-top">
+    <button class="btn-primary" type="button" onclick="openTaskModal(null)">+ Nueva tarea</button>
+    <form method="get" class="toolbar-search" id="filterForm">
+      <input type="hidden" name="view" value="{{ view }}">
+      {% if sprint %}<input type="hidden" name="sprint_id" value="{{ sprint.sprint_id }}">{% endif %}
+      <input type="hidden" name="cat" id="hdnCat" value="{{ cat }}">
+      <input type="hidden" name="date_from" id="hdnDateFrom" value="{{ date_from }}">
+      <input type="hidden" name="date_to" id="hdnDateTo" value="{{ date_to }}">
+      <input type="hidden" name="priority" id="hdnPriority" value="{{ priority_filter }}">
+      <input type="hidden" name="sistema" id="hdnSistema" value="{{ sistema_filter }}">
+      <input type="hidden" name="iniciativa" id="hdnIniciativa" value="{{ iniciativa_filter }}">
+      <input type="hidden" name="ia" id="hdnIa" value="{{ ia_filter }}">
+      <input type="text" name="q" value="{{ query }}" placeholder="Buscar tareas...">
+    </form>
+    <button type="submit" form="filterForm" formaction="/proyecto/{{ proyecto.id }}/tablero/exportar/" class="toolbar-icon-btn" title="Exportar CSV con los filtros actuales">{{ icon("download", 15) }}</button>
+    <button type="button" class="toolbar-icon-btn" title="Atajos de teclado (?)" onclick="document.getElementById('shortcutsModal').classList.add('open')">{{ icon("help-circle", 15) }}</button>
+    <div class="view-tabs">
+      {% for v in views %}<a class="view-tab {% if view == v %}active{% endif %}" href="?view={{ v }}&q={{ query }}&cat={{ cat }}&ia={{ ia_filter }}&priority={{ priority_filter }}&sistema={{ sistema_filter }}&iniciativa={{ iniciativa_filter }}&date_from={{ date_from }}&date_to={{ date_to }}{{ sp_qs }}">{{ v }}</a>{% endfor %}
+    </div>
+  </div>
+
+  <div class="toolbar-filter-row" id="filterBar">
+    <div class="form-group">
+      <label>Categoría</label>
+      <select id="uiCat" onchange="applyFilterBar()">
+        <option value="Todas" {% if cat == 'Todas' %}selected{% endif %}>Todas</option>
+        {% for c in proj_cats %}<option value="{{ c }}" {% if cat == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Sistema</label>
+      <select id="uiSistema" onchange="applyFilterBar()">
+        <option value="Todos" {% if sistema_filter == 'Todos' %}selected{% endif %}>Todos</option>
+        {% for empresa_nombre, grupo in sistemas|groupby('empresa') %}
+        <optgroup label="{{ empresa_nombre or 'Sin empresa' }}">
+          {% for s in grupo %}<option value="{{ s.id }}" {% if sistema_filter == s.id %}selected{% endif %}>{{ s.nombre }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </div>
+    {% if iniciativas %}
+    <div class="form-group">
+      <label>Iniciativa</label>
+      <select id="uiIniciativa" onchange="applyFilterBar()">
+        <option value="Todas" {% if iniciativa_filter == 'Todas' %}selected{% endif %}>Todas</option>
+        {% for i in iniciativas %}<option value="{{ i.id }}" {% if iniciativa_filter == i.id %}selected{% endif %}>{{ i.nombre }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Generada IA</label>
+      <select id="uiIa" onchange="applyFilterBar()">
+        <option value="Todas" {% if ia_filter == 'Todas' %}selected{% endif %}>Todas</option>
+        <option value="Si" {% if ia_filter == 'Si' %}selected{% endif %}>Sí</option>
+        <option value="No" {% if ia_filter == 'No' %}selected{% endif %}>No</option>
+      </select>
+    </div>
+    {% endif %}
+    <div class="form-group">
+      <label>Prioridad</label>
+      <div class="prio-pills">
+        {% for p_val, p_label in [('Todas','Todas'), ('Alta','Alta'), ('Normal','Normal'), ('Baja','Baja')] %}
+        <a href="?view={{ view }}&q={{ query }}&cat={{ cat }}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if sistema_filter != 'Todos' %}&sistema={{ sistema_filter }}{% endif %}{% if iniciativa_filter != 'Todas' %}&iniciativa={{ iniciativa_filter }}{% endif %}{% if ia_filter != 'Todas' %}&ia={{ ia_filter }}{% endif %}&priority={{ p_val }}{{ sp_qs }}" class="prio-pill {% if priority_filter == p_val %}active{% endif %}">{{ p_label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Creadas entre</label>
+      <div class="toolbar-filter-dates">
+        <input type="date" id="uiDateFrom" value="{{ date_from }}" onchange="applyFilterBar()">
+        <span class="toolbar-date-sep">—</span>
+        <input type="date" id="uiDateTo" value="{{ date_to }}" onchange="applyFilterBar()">
+        <button type="button" class="toolbar-today-btn" onclick="setToday()">Hoy</button>
+      </div>
+    </div>
+    {% if cat != 'Todas' or priority_filter != 'Todas' or date_from or date_to or sistema_filter != 'Todos' or iniciativa_filter != 'Todas' or ia_filter != 'Todas' %}
+    <a href="?view={{ view }}&q={{ query }}{{ sp_qs }}" class="toolbar-clear-date" title="Quitar filtros">{{ icon("x", 12) }} Limpiar todo</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="board" id="board">
+  {% for col in board_data %}
+  <div class="board-column">
+    <div class="column-header">
+      <span class="column-accent" style="background:{{ col.color }}"></span>
+      <span class="column-title">{{ col.nombre }}</span>
+      <span class="column-count">{{ col.tasks|length }}</span>
+      {% if col.max_tareas %}<span class="column-wip {% if col.tasks|length >= col.max_tareas %}wip-exceeded{% endif %}">max {{ col.max_tareas }}</span>{% endif %}
+      {% if col.id %}
+      <div class="col-mgmt-wrap">
+        <button class="col-mgmt-btn" type="button" onclick="toggleColMenu('menu-{{ col.id }}', event)">{{ icon("settings", 14) }}</button>
+        <div class="col-mgmt-menu" id="menu-{{ col.id }}">
+          <button type="button" onclick="openColRenameModal('{{ col.id }}','{{ col.nombre }}','{{ col.color }}',{{ 'true' if col.es_done else 'false' }},{{ col.max_tareas or 0 }})">Renombrar</button>
+          <form method="post" action="/columna/{{ col.id }}/mover/">{{ csrf_field() }}<input type="hidden" name="direction" value="left"><button type="submit">Mover a la izquierda</button></form>
+          <form method="post" action="/columna/{{ col.id }}/mover/">{{ csrf_field() }}<input type="hidden" name="direction" value="right"><button type="submit">Mover a la derecha</button></form>
+          <form method="post" action="/columna/{{ col.id }}/eliminar/" id="colDeleteForm-{{ col.id }}"
+                onsubmit="event.preventDefault(); showConfirm('¿Eliminar la columna «{{ col.nombre }}»? Las tareas que tenga se quedan sin columna visible.', function(){ document.getElementById('colDeleteForm-{{ col.id }}').submit(); }, {title:'Eliminar columna', okText:'Eliminar', danger:true}); return false;">{{ csrf_field() }}
+            <button type="submit" class="col-mgmt-delete">Eliminar</button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="column-cards" data-status="{{ col.nombre }}">
+      {% for task in col.tasks %}
+      <div class="card" data-task-id="{{ task.task_id }}" data-fecha-fin="{{ task.fecha_fin }}"
+           data-title="{{ task.title }}" data-category="{{ task.category }}" data-status="{{ task.status }}"
+           data-priority="{{ task.priority }}" data-description="{{ task.description }}" data-next-step="{{ task.next_step }}"
+           data-fecha-inicio="{{ task.fecha_inicio }}" data-empresa-id="{{ task.empresa_id }}" data-sistema-id="{{ task.sistema_id }}"
+           data-iniciativa-id="{{ task.iniciativa_id }}" data-anclada="{{ 'true' if task.anclada else 'false' }}"
+           data-subtareas="{{ task.subtareas_raw }}" data-tiempo-estimado="{{ task.tiempo_estimado or '' }}" data-tiempo-real="{{ task.tiempo_real or '' }}"
+           data-sprint-id="{{ task.sprint_id }}" data-asignado-a="{{ task.asignado_a or '' }}">
+        <div class="card-stripe" style="background:{{ proyecto.color }}"></div>
+        <div class="card-top">
+          <label class="card-select-wrap" onclick="event.stopPropagation()">
+            <input type="checkbox" class="card-select" value="{{ task.task_id }}" onchange="onCardSelect(this)">
+          </label>
+          <span class="card-priority" data-priority="{{ task.priority }}">{{ task.priority }}</span>
+          {% if task.mantis_id and mantis_base_url %}
+          <a class="card-mantis-badge" href="{{ mantis_base_url }}/view.php?id={{ task.mantis_id }}"
+             target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Ver en Mantis">#{{ task.mantis_id }}</a>
+          {% endif %}
+          {% if task.generada_por_ia %}
+          <span class="card-ia-badge" title="Incidencia de Mantis creada por la IA de soporte">IA</span>
+          {% endif %}
+          {% if task.asignado_a_nombre %}
+          <span class="card-avatar" title="Asignada a {{ task.asignado_a_nombre }}">{{ task.asignado_a_nombre[0]|upper }}</span>
+          {% endif %}
+          <span class="card-order">#{{ task.orden }}</span>
+        </div>
+        <div class="card-title">{{ task.title }}{% if task.anclada %} 📌{% endif %}</div>
+        {% if task.category %}<div class="card-category">{{ task.category }}</div>{% endif %}
+        {% if task.fecha_fin %}<div class="card-date">{{ icon("calendar", 11) }} {{ task.fecha_fin }}</div>{% endif %}
+        {% if task.sprint_id %}<div class="card-sprint-badge">Sprint</div>{% endif %}
+        {% if task.next_step %}<div class="card-next">{{ task.next_step }}</div>{% endif %}
+        {% if task.subtareas_count %}<div class="card-subtasks-badge">☑ {{ task.subtareas_done }}/{{ task.subtareas_count }}</div>{% endif %}
+        <div class="card-actions">
+          <button type="button" class="card-btn" onclick="openTaskModal(this.closest('.card'))">Editar</button>
+          {% if view == 'Borradas' %}
+          <form method="post" action="/tarea/{{ task.task_id }}/restaurar/">{{ csrf_field() }}<input type="hidden" name="proyecto" value="{{ proyecto.id }}"><button type="submit" class="card-btn card-btn-green">Restaurar</button></form>
+          {% else %}
+          <form method="post" action="/tarea/{{ task.task_id }}/duplicar/">{{ csrf_field() }}
+            <button type="submit" class="card-btn">Duplicar</button>
+          </form>
+          {% if sprint and task.sprint_id == sprint.sprint_id %}
+          <form method="post" action="/sprint/{{ sprint.sprint_id }}/tarea/{{ task.task_id }}/quitar/" title="Quitar del sprint (vuelve al backlog)">{{ csrf_field() }}
+            <button type="submit" class="card-btn">Quitar</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/tarea/{{ task.task_id }}/borrar-tablero/" id="taskDeleteForm-{{ task.task_id }}"
+                onsubmit="event.preventDefault(); showConfirm('¿Borrar «{{ task.title }}»?', function(){ document.getElementById('taskDeleteForm-{{ task.task_id }}').submit(); }, {title:'Borrar tarea', okText:'Borrar', danger:true}); return false;">{{ csrf_field() }}
+            <input type="hidden" name="proyecto" value="{{ proyecto.id }}">
+            <button type="submit" class="card-btn card-btn-red">Borrar</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}<div class="column-empty">Sin tareas.</div>{% endfor %}
+      {% if col.id and view != 'Borradas' %}
+      <form class="column-quick-add" method="post" action="/proyecto/{{ proyecto.id }}/tarea/rapida/">{{ csrf_field() }}
+        <input type="hidden" name="status" value="{{ col.nombre }}">
+        {% if sprint %}<input type="hidden" name="sprint_id" value="{{ sprint.sprint_id }}">{% endif %}
+        <input type="text" class="quick-add-input" name="title" placeholder="+ Añadir tarea" autocomplete="off">
+        <button type="submit" class="quick-add-btn">{{ icon("plus", 14) }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% if view != 'Borradas' %}
+  <div class="board-add-col"><button class="board-add-col-btn" type="button" onclick="document.getElementById('colNewModal').classList.add('open')">+ Columna</button></div>
+  {% endif %}
+</div>
+
+<!-- MODAL: nueva columna -->
+<div class="modal-overlay" id="colNewModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title">Nueva columna</h3>
+      <form method="post" action="/proyecto/{{ proyecto.id }}/columna/nueva/">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" maxlength="40" required></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="col-color-picker">
+            {% for hex in column_colors %}<label class="col-color-swatch"><input type="radio" name="color" value="{{ hex }}" {% if loop.first %}checked{% endif %}><span class="swatch-dot" style="background:{{ hex }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="form-group"><label class="col-done-label"><input type="checkbox" name="es_done" value="true" style="width:auto"> Marca las tareas como hechas</label></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('colNewModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: renombrar columna -->
+<div class="modal-overlay" id="colRenameModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title">Editar columna</h3>
+      <form method="post" id="colRenameForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="cr_nombre" maxlength="40" required></div>
+        <div class="form-group"><label>COLOR</label>
+          <div class="col-color-picker" id="cr_color_picker">
+            {% for hex in column_colors %}<label class="col-color-swatch"><input type="radio" name="color" value="{{ hex }}"><span class="swatch-dot" style="background:{{ hex }}"></span></label>{% endfor %}
+          </div>
+        </div>
+        <div class="form-group"><label class="col-done-label"><input type="checkbox" name="es_done" value="true" id="cr_es_done" style="width:auto"> Marca las tareas como hechas</label></div>
+        <div class="form-group"><label>LÍMITE WIP <span style="font-weight:400;text-transform:none">(0 = sin límite)</span></label><input type="number" name="max_tareas" id="cr_max_tareas" min="0" max="99" value="0" style="width:80px"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('colRenameModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: tarea -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal modal-lg">
+    <div class="modal-stripe" id="taskModalStripe" style="background:{{ proyecto.color }}"></div>
+    <div class="modal-body">
+      <h3 class="modal-title" id="taskModalTitle">Nueva tarea</h3>
+      <form method="post" id="taskModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>TÍTULO</label><input type="text" name="title" id="tm_title" class="input-lg" required></div>
+        <div class="form-row">
+          <div class="form-group"><label>PROYECTO</label>
+            <select id="tm_proyecto">{% for p in proyectos %}<option value="{{ p.id }}" {% if p.id == proyecto.id %}selected{% endif %}>{{ p.nombre }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group"><label>CATEGORÍA</label><select name="category" id="tm_category"></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>ESTADO</label><select name="status" id="tm_status"></select></div>
+          <div class="form-group"><label>PRIORIDAD</label><select name="priority" id="tm_priority">{% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>SISTEMA</label>
+            <select name="sistema_id" id="tm_sistema"><option value="">— ninguno —</option>{% for s in sistemas %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% endfor %}</select>
+          </div>
+          <div class="form-group"><label>EMPRESA</label>
+            <select name="empresa_id" id="tm_empresa"><option value="">— ninguna —</option>{% for e in empresas %}<option value="{{ e.empresa_id }}">{{ e.nombre }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <div class="form-group"><label>INICIATIVA <span style="font-weight:400;text-transform:none">(opcional)</span></label>
+          <select name="iniciativa_id" id="tm_iniciativa"><option value="">— ninguna —</option>{% for i in iniciativas %}<option value="{{ i.id }}">{{ i.nombre }}</option>{% endfor %}</select>
+        </div>
+        <div class="form-group"><label>ASIGNADO A</label>
+          <select name="asignado_a" id="tm_asignado_a"><option value="">— sin asignar —</option>{% for m in miembros_asignables %}<option value="{{ m.id }}">{{ m.nombre_completo }}</option>{% endfor %}</select>
+        </div>
+        {% if proyecto.tipo == 'scrum' %}
+        <div class="form-group" id="tm_sprint_group">
+          <label>SPRINT</label>
+          <select name="sprint_id" id="tm_sprint">
+            <option value="">— sin sprint (backlog) —</option>
+            {% for s in proj_sprints %}<option value="{{ s.sprint_id }}">{{ s.nombre }}{% if s.estado == 'activo' %} · activo{% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="form-group form-check"><input type="checkbox" name="anclada" value="true" id="tm_anclada"><label for="tm_anclada">📌 Anclar (marcador visual, sin efecto en el orden)</label></div>
+        <div class="form-group"><label>DESCRIPCIÓN</label><textarea name="description" id="tm_description" rows="3"></textarea></div>
+        <div class="form-group"><label>PRÓXIMO PASO</label><textarea name="next_step" id="tm_next_step" rows="2"></textarea></div>
+        <div class="form-group">
+          <label>SUBTAREAS</label>
+          <div class="subtask-list" id="subtaskList"></div>
+          <button type="button" class="btn-secondary btn-sm" onclick="addSubtask()">+ Subtarea</button>
+          <input type="hidden" name="subtareas" id="tm_subtareas">
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>TIEMPO ESTIMADO (h)</label><input type="number" name="tiempo_estimado" id="tm_tiempo_estimado" min="0" step="0.5"></div>
+          <div class="form-group"><label>TIEMPO REAL (h)</label><input type="number" name="tiempo_real" id="tm_tiempo_real" min="0" step="0.5"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>FECHA INICIO</label><input type="date" name="fecha_inicio" id="tm_fecha_inicio"></div>
+          <div class="form-group"><label>FECHA FIN</label><input type="date" name="fecha_fin" id="tm_fecha_fin"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('taskModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: atajos de teclado -->
+<div class="modal-overlay" id="shortcutsModal" onclick="if(event.target===this)closeModal('shortcutsModal')">
+  <div class="modal modal-sm">
+    <div class="modal-body">
+      <h3 class="modal-title">Atajos de teclado</h3>
+      <div class="shortcuts-list">
+        <div class="shortcut-row"><kbd>Ctrl+N</kbd><span>Nueva tarea</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Z</kbd><span>Deshacer mover</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Y</kbd><span>Rehacer mover</span></div>
+        <div class="shortcut-row"><kbd>Esc</kbd><span>Cerrar modal / panel</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span>Esta ayuda</span></div>
+        <div class="shortcut-row"><kbd>click</kbd><span>Abrir detalle de tarea</span></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" onclick="closeModal('shortcutsModal')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BARRA DE ACCIONES EN BLOQUE (selección múltiple) -->
+<div class="bulk-bar" id="bulkBar">
+  <span id="bulkCount">0 tarea(s) seleccionada(s)</span>
+  <button class="btn-danger btn-sm" onclick="bulkDelete()">Borrar seleccionadas</button>
+  <button class="btn-secondary btn-sm" onclick="clearSelection()">Cancelar</button>
+</div>
+
+<!-- PANEL DE DETALLE (lateral, solo lectura + adjuntos; "Editar" abre el modal de arriba) -->
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <div class="detail-stripe" id="detailStripe"></div>
+    <button class="detail-close" onclick="closeDetail()">&#x2715;</button>
+  </div>
+  <div class="detail-content">
+    <div class="detail-meta" id="detailMeta"></div>
+    <h2 class="detail-title" id="detailTitle">Detalle de tarea</h2>
+    <div class="detail-section">
+      <div class="detail-section-label">Descripción</div>
+      <div class="detail-section-text" id="detailDescription">-</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-label">Próximo paso</div>
+      <div class="detail-section-text detail-next" id="detailNextStep">-</div>
+    </div>
+    <div id="detailSubtasks"></div>
+    <div class="detail-section">
+      <div class="detail-section-label">Info</div>
+      <div class="detail-info" id="detailInfo"></div>
+    </div>
+    <div id="detailDocs"></div>
+    <div class="detail-actions" id="detailActions"></div>
+  </div>
+</div>
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail()"></div>
+
+<script src="/static/js/sortable.min.js"></script>
+<script>
+var CURRENT_SPRINT_ID = {{ sprint.sprint_id|tojson_seguro if sprint else 'null' }};
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── barra de herramientas (mostrar/ocultar + filtros) ────────────────────────
+// Igual que core/templates/board.html: un unico boton de despliegue
+// (toolbarToggleBtn, icono "sliders") colapsa/expande TODA la barra
+// (.toolbar, las dos filas); mientras esta colapsada, el boton "+ Nueva
+// tarea" de respaldo (quickAddTaskBtn, fuera de .toolbar) hace sus veces.
+function toggleBoardToolbar() {
+  var toolbar = document.getElementById('boardToolbar');
+  var toggle = document.getElementById('toolbarToggleBtn');
+  var quickAdd = document.getElementById('quickAddTaskBtn');
+  toolbar.classList.toggle('collapsed');
+  var expanded = !toolbar.classList.contains('collapsed');
+  toggle.classList.toggle('is-active', expanded);
+  if (quickAdd) quickAdd.style.display = expanded ? 'none' : '';
+}
+
+// Los <select>/<input type=date> de la fila de filtros no son parte del
+// <form> real (viven fuera, solo con id="ui..."): al cambiar, su valor se
+// copia al input oculto correspondiente dentro de #filterForm y se envia --
+// asi el <select> de sistema/iniciativa no necesita "name" propio ni pisa
+// los demas campos ocultos que ya trae el formulario.
+function applyFilterBar() {
+  document.getElementById('hdnCat').value = document.getElementById('uiCat').value;
+  document.getElementById('hdnDateFrom').value = document.getElementById('uiDateFrom').value;
+  document.getElementById('hdnDateTo').value = document.getElementById('uiDateTo').value;
+  document.getElementById('hdnSistema').value = document.getElementById('uiSistema').value;
+  var iniciativaEl = document.getElementById('uiIniciativa');
+  if (iniciativaEl) document.getElementById('hdnIniciativa').value = iniciativaEl.value;
+  var iaEl = document.getElementById('uiIa');
+  if (iaEl) document.getElementById('hdnIa').value = iaEl.value;
+  document.getElementById('filterForm').submit();
+}
+function setToday() {
+  var today = new Date().toISOString().slice(0, 10);
+  document.getElementById('hdnDateFrom').value = today;
+  document.getElementById('hdnDateTo').value = today;
+  document.getElementById('filterForm').submit();
+}
+
+// ── selección múltiple + borrado en bloque ──────────────────────────────────
+// Igual que core/templates/board.html (_selectedIds/onCardSelect/bulkDelete):
+// no hay un "modo seleccion" activado por boton -- el checkbox de cada
+// tarjeta aparece al pasar el raton, y en cuanto hay >=1 marcada se
+// generaliza a todas via la clase 'board-bulk-active' del contenedor. La
+// unica accion en bloque es borrar (mover a Borradas); conviven sin
+// coordinacion con el panel de detalle y con el drag-and-drop (igual que
+// en el original).
+var _selectedIds = new Set();
+
+function onCardSelect(checkbox) {
+  if (checkbox.checked) { _selectedIds.add(checkbox.value); }
+  else { _selectedIds.delete(checkbox.value); }
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  var bar = document.getElementById('bulkBar');
+  document.getElementById('board').classList.toggle('board-bulk-active', _selectedIds.size > 0);
+  if (_selectedIds.size > 0) {
+    bar.classList.add('visible');
+    document.getElementById('bulkCount').textContent = _selectedIds.size + ' tarea(s) seleccionada(s)';
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+function clearSelection() {
+  _selectedIds.clear();
+  document.querySelectorAll('.card-select').forEach(function(cb) { cb.checked = false; });
+  updateBulkBar();
+}
+
+function bulkDelete() {
+  if (!_selectedIds.size) return;
+  showConfirm('Se moverán ' + _selectedIds.size + ' tarea(s) a Borradas.', function() {
+    var fd = new FormData();
+    fd.append('task_ids', JSON.stringify(Array.from(_selectedIds)));
+    fetch('/tarea/borrar-varios/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d.ok) location.reload(); })
+      .catch(function() { location.reload(); });
+  }, { title: '¿Borrar tareas seleccionadas?', okText: 'Borrar', danger: true });
+}
+
+function toggleColMenu(menuId, e) {
+  e.stopPropagation();
+  document.querySelectorAll('.col-mgmt-menu.open').forEach(function(m) { if (m.id !== menuId) m.classList.remove('open'); });
+  document.getElementById(menuId).classList.toggle('open');
+}
+document.addEventListener('click', function() {
+  document.querySelectorAll('.col-mgmt-menu.open').forEach(function(m) { m.classList.remove('open'); });
+});
+
+function openColRenameModal(colId, nombre, color, esDone, maxTareas) {
+  var form = document.getElementById('colRenameForm');
+  form.action = '/columna/' + colId + '/renombrar/';
+  document.getElementById('cr_nombre').value = nombre;
+  document.getElementById('cr_es_done').checked = esDone;
+  document.getElementById('cr_max_tareas').value = maxTareas || 0;
+  document.querySelectorAll('#cr_color_picker input').forEach(function(r) { r.checked = (r.value === color); });
+  document.getElementById('colRenameModal').classList.add('open');
+}
+
+// Editar proyecto: ver openSidebarProjectModal() en _base.html (modal
+// global, reachable desde el lapiz del sidebar) -- este tablero tenia su
+// propio modal local duplicado, ya quitado. Eliminar proyecto: ver
+// abrirEliminarProyectoModal() en espacio_detalle.html.
+
+// ── subtareas ────────────────────────────────────────────────────────────────
+var _subtaskData = [];
+function renderSubtasks() {
+  var list = document.getElementById('subtaskList');
+  list.innerHTML = '';
+  _subtaskData.forEach(function(s, i) {
+    var row = document.createElement('div');
+    row.className = 'subtask-row';
+    var safe = (s.t || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    row.innerHTML = '<input type="checkbox" class="subtask-check"' + (s.d ? ' checked' : '') +
+      ' onchange="_subtaskData['+i+'].d=this.checked;syncSubtasks()">' +
+      '<input type="text" class="subtask-text" value="' + safe + '" oninput="_subtaskData['+i+'].t=this.value;syncSubtasks()" placeholder="Subtarea...">' +
+      '<button type="button" class="subtask-del" onclick="_subtaskData.splice('+i+',1);renderSubtasks()">×</button>';
+    list.appendChild(row);
+  });
+  syncSubtasks();
+}
+function syncSubtasks() {
+  var filtered = _subtaskData.filter(function(s){ return s.t && s.t.trim(); });
+  document.getElementById('tm_subtareas').value = filtered.length ? JSON.stringify(filtered) : '';
+}
+function addSubtask() {
+  _subtaskData.push({t:'', d:false});
+  renderSubtasks();
+  var inputs = document.querySelectorAll('.subtask-text');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+// ── modal de tarea ───────────────────────────────────────────────────────────
+function setSelect(id, val) { var el = document.getElementById(id); if (el && val) el.value = val; }
+
+function fetchCategorias(proyectoId, selectAfter) {
+  return fetch('/calendario/categorias/' + proyectoId + '/json').then(function(r){ return r.json(); }).then(function(data) {
+    var sel = document.getElementById('tm_category');
+    sel.innerHTML = '';
+    data.categories.forEach(function(c) {
+      var opt = document.createElement('option'); opt.value = c.nombre; opt.textContent = c.nombre; sel.appendChild(opt);
+    });
+    setSelect('tm_category', selectAfter);
+  });
+}
+function fetchColumnas(proyectoId, selectAfter) {
+  return fetch('/calendario/columnas/' + proyectoId + '/json').then(function(r){ return r.json(); }).then(function(data) {
+    var sel = document.getElementById('tm_status');
+    sel.innerHTML = '';
+    data.columnas.forEach(function(c) {
+      var opt = document.createElement('option'); opt.value = c.nombre; opt.textContent = c.nombre; sel.appendChild(opt);
+    });
+    setSelect('tm_status', selectAfter);
+  });
+}
+
+function openTaskModal(card) {
+  var modal = document.getElementById('taskModal');
+  var form = document.getElementById('taskModalForm');
+  var isEdit = !!card;
+  document.getElementById('taskModalTitle').textContent = isEdit ? 'Editar tarea' : 'Nueva tarea';
+  form.action = isEdit ? '/tarea/' + card.dataset.taskId + '/editar-completa/' : '/proyecto/{{ proyecto.id }}/tarea/nueva/';
+
+  document.getElementById('tm_title').value = isEdit ? card.dataset.title : '';
+  document.getElementById('tm_description').value = isEdit ? card.dataset.description : '';
+  document.getElementById('tm_next_step').value = isEdit ? card.dataset.nextStep : '';
+  document.getElementById('tm_fecha_inicio').value = isEdit ? card.dataset.fechaInicio : '';
+  document.getElementById('tm_fecha_fin').value = isEdit ? card.dataset.fechaFin : '';
+  document.getElementById('tm_tiempo_estimado').value = isEdit ? card.dataset.tiempoEstimado : '';
+  document.getElementById('tm_tiempo_real').value = isEdit ? card.dataset.tiempoReal : '';
+  document.getElementById('tm_anclada').checked = isEdit && card.dataset.anclada === 'true';
+  setSelect('tm_empresa', isEdit ? card.dataset.empresaId : '');
+  setSelect('tm_sistema', isEdit ? card.dataset.sistemaId : '');
+  setSelect('tm_iniciativa', isEdit ? card.dataset.iniciativaId : '');
+  setSelect('tm_asignado_a', isEdit ? card.dataset.asignadoA : '');
+  setSelect('tm_priority', isEdit ? card.dataset.priority : 'Normal');
+  var tmSprint = document.getElementById('tm_sprint');
+  if (tmSprint) tmSprint.value = isEdit ? (card.dataset.sprintId || '') : (CURRENT_SPRINT_ID || '');
+
+  try { _subtaskData = (isEdit && card.dataset.subtareas) ? JSON.parse(card.dataset.subtareas) : []; }
+  catch (e) { _subtaskData = []; }
+  renderSubtasks();
+
+  var proyectoSel = document.getElementById('tm_proyecto');
+  proyectoSel.value = '{{ proyecto.id }}';
+  document.getElementById('taskModalStripe').style.background = '{{ proyecto.color }}';
+  var catDestino = isEdit ? card.dataset.category : '';
+  var statusDestino = isEdit ? card.dataset.status : '';
+  Promise.all([fetchCategorias('{{ proyecto.id }}', catDestino), fetchColumnas('{{ proyecto.id }}', statusDestino)]).then(function() {
+    modal.classList.add('open');
+    setTimeout(function() { document.getElementById('tm_title').focus(); }, 50);
+  });
+}
+
+document.getElementById('tm_proyecto').addEventListener('change', function() {
+  var pid = this.value;
+  var form = document.getElementById('taskModalForm');
+  // reasignar a otro proyecto: la accion pasa a ser la ruta de ese proyecto
+  if (form.action.indexOf('/tarea/nueva/') === -1 && form.action.indexOf('/editar-completa/') === -1) return;
+  Promise.all([fetchCategorias(pid, ''), fetchColumnas(pid, '')]);
+});
+
+// ── deshacer / rehacer (Ctrl+Z / Ctrl+Y) ─────────────────────────────────────
+// Igual que core/templates/board.html: la pila vive en sessionStorage (para
+// sobrevivir a recargas, sin limite de tamaño, compartida entre pestanas del
+// mismo tablero -- si se navega entre proyectos en la misma pestana la pila
+// mezcla tareas de proyectos distintos, igual que en el original, no
+// corregido aqui). Solo se apilan cambios de COLUMNA (drag entre columnas
+// distintas), nunca crear/editar/borrar tarea ni cambios de columna en si
+// mismos. _undo()/_redo() SI llaman al servidor (mismo endpoint que el
+// drag real), con before_id vacio -- restauran la columna, no la posicion
+// exacta que tenia la tarjeta dentro de ella.
+var _undoStack = JSON.parse(sessionStorage.getItem('_undoStack') || '[]');
+var _redoStack = JSON.parse(sessionStorage.getItem('_redoStack') || '[]');
+var _moveFrom = null;
+
+function _saveStacks() {
+  sessionStorage.setItem('_undoStack', JSON.stringify(_undoStack));
+  sessionStorage.setItem('_redoStack', JSON.stringify(_redoStack));
+}
+
+function _performMove(taskId, toStatus, cb) {
+  var fd = new FormData();
+  fd.append('status', toStatus);
+  fd.append('before_id', '');
+  fetch('/tarea/' + taskId + '/reordenar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { cb(d.ok); })
+    .catch(function() { cb(false); });
+}
+
+function _undo() {
+  if (!_undoStack.length) return;
+  var action = _undoStack.pop();
+  _redoStack.push(action);
+  _saveStacks();
+  _performMove(action.taskId, action.fromStatus, function() { location.reload(); });
+}
+
+function _redo() {
+  if (!_redoStack.length) return;
+  var action = _redoStack.pop();
+  _undoStack.push(action);
+  _saveStacks();
+  _performMove(action.taskId, action.toStatus, function() { location.reload(); });
+}
+
+// ── SortableJS ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.column-cards').forEach(function(el) {
+  new Sortable(el, {
+    group: 'tasks', animation: 150, ghostClass: 'task-ghost', chosenClass: 'task-chosen',
+    draggable: '.card', filter: '.card-btn, .card-actions, .quick-add-input, .quick-add-btn', preventOnFilter: true,
+    onStart: function(evt) {
+      _moveFrom = { taskId: evt.item.dataset.taskId, fromStatus: evt.from.dataset.status };
+    },
+    onEnd: function(evt) {
+      var taskId = evt.item.dataset.taskId;
+      var newStatus = evt.to.dataset.status;
+      var cards = Array.from(evt.to.querySelectorAll('.card'));
+      var nextCard = cards[evt.newIndex + 1];
+      var beforeId = nextCard ? nextCard.dataset.taskId : '';
+      if (beforeId === taskId) beforeId = '';
+      var fd = new FormData();
+      fd.append('status', newStatus);
+      fd.append('before_id', beforeId);
+      fetch('/tarea/' + taskId + '/reordenar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.ok) { if (d.error) alert(d.error); location.reload(); return; }
+          if (_moveFrom && _moveFrom.fromStatus !== newStatus) {
+            _undoStack.push({ taskId: taskId, fromStatus: _moveFrom.fromStatus, toStatus: newStatus });
+            _redoStack = [];
+            _saveStacks();
+          }
+          _moveFrom = null;
+        })
+        .catch(function() { location.reload(); });
+    },
+  });
+});
+
+// ── indicadores de fecha límite ────────────────────────────────────────────
+(function() {
+  var today = new Date(); today.setHours(0,0,0,0);
+  document.querySelectorAll('.card[data-fecha-fin]').forEach(function(card) {
+    var fin = card.dataset.fechaFin;
+    if (!fin) return;
+    var d = new Date(fin); d.setHours(0,0,0,0);
+    var diff = Math.round((d - today) / 86400000);
+    if (diff < 0) card.classList.add('card-overdue');
+    else if (diff <= 3) card.classList.add('card-due-soon');
+  });
+})();
+
+// ── panel de detalle lateral ─────────────────────────────────────────────────
+// Igual que core/templates/board.html::openDetail/closeDetail: pide el
+// detalle por fetch a /tarea/<id>/detalle/ (no depende de que la tarjeta este
+// pintada en ESTE tablero -- otro sprint, backlog, filtrada...), por eso
+// funciona igual de bien al abrirse desde el buscador global via
+// ?abrir_tarea=<id> que al hacer click en una tarjeta ya visible.
+function openDetail(taskId) {
+  document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('card-selected'); });
+  var card = document.querySelector('.card[data-task-id="' + taskId + '"]');
+  if (card) card.classList.add('card-selected');
+  fetch('/tarea/' + taskId + '/detalle/')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) return;
+      document.getElementById('detailStripe').style.background = d.project_color;
+      document.getElementById('detailTitle').textContent = d.title;
+      document.getElementById('detailMeta').textContent = d.project_name + '  ·  ' + (d.category || 'Sin categoría');
+      document.getElementById('detailDescription').textContent = d.description || '-';
+      document.getElementById('detailNextStep').textContent = d.next_step || '-';
+
+      var infoHtml =
+        '<div class="detail-info-row"><span>Creada</span><span>' + d.created_at + '</span></div>' +
+        '<div class="detail-info-row"><span>Actualizada</span><span>' + d.updated_at + '</span></div>';
+      if (d.fecha_inicio) infoHtml += '<div class="detail-info-row"><span>Inicio</span><span>' + d.fecha_inicio + '</span></div>';
+      if (d.fecha_fin) infoHtml += '<div class="detail-info-row"><span>Fin</span><span>' + d.fecha_fin + '</span></div>';
+      if (d.tiempo_estimado) infoHtml += '<div class="detail-info-row"><span>Tiempo estimado</span><span>' + d.tiempo_estimado + 'h</span></div>';
+      if (d.tiempo_real) infoHtml += '<div class="detail-info-row"><span>Tiempo real</span><span>' + d.tiempo_real + 'h</span></div>';
+      document.getElementById('detailInfo').innerHTML = infoHtml;
+
+      var subsHtml = '';
+      if (d.subtareas) {
+        try {
+          var subs = JSON.parse(d.subtareas);
+          if (subs.length) {
+            var done = subs.filter(function(s) { return s.d; }).length;
+            subsHtml = '<div class="detail-section"><div class="detail-section-label">Subtareas <span class="detail-sub-count">' + done + '/' + subs.length + '</span></div><div class="detail-subtask-list">';
+            subs.forEach(function(s) {
+              subsHtml += '<div class="detail-subtask-item' + (s.d ? ' done' : '') + '">' +
+                '<span class="detail-subtask-check">' + (s.d ? '☑' : '☐') + '</span>' +
+                '<span>' + (s.t || '') + '</span></div>';
+            });
+            subsHtml += '</div></div>';
+          }
+        } catch (e) {}
+      }
+      document.getElementById('detailSubtasks').innerHTML = subsHtml;
+
+      var csrfInputHtml = '<input type="hidden" name="csrf_token" value="' + getCookie('gestor_csrftoken') + '">';
+      var docsHtml = '<div class="detail-docs">';
+      docsHtml += '<div class="detail-docs-header"><span class="detail-section-label">Adjuntos</span>';
+      docsHtml += '<label class="detail-upload-btn" title="Adjuntar archivo">📎';
+      docsHtml += '<form method="post" action="/tarea/' + d.task_id + '/doc/subir/" enctype="multipart/form-data" id="docForm_' + d.task_id + '">';
+      docsHtml += csrfInputHtml;
+      docsHtml += '<input type="file" name="file" style="display:none" onchange="document.getElementById(\'docForm_' + d.task_id + '\').submit()">';
+      docsHtml += '</form></label></div>';
+      if (d.documents && d.documents.length) {
+        d.documents.forEach(function(doc) {
+          docsHtml += '<div class="detail-doc-item">';
+          docsHtml += '<span class="detail-doc-icon">' + doc.icon + '</span>';
+          docsHtml += '<div class="detail-doc-info"><div class="detail-doc-name">' + doc.nombre + '</div>';
+          docsHtml += '<div class="detail-doc-meta">' + doc.size_str + ' · ' + doc.uploaded_at + '</div></div>';
+          docsHtml += '<a href="/doc/' + doc.doc_id + '/descargar/" class="card-btn">&#x2B07;</a>';
+          docsHtml += '<form method="post" action="/doc/' + doc.doc_id + '/eliminar/" style="display:inline" id="docDelForm-' + doc.doc_id + '"' +
+            ' onsubmit="event.preventDefault(); showConfirm(\'¿Eliminar este adjunto?\', function(){ document.getElementById(\'docDelForm-' + doc.doc_id + '\').submit(); }, {title:\'Eliminar adjunto\', okText:\'Eliminar\', danger:true}); return false;">';
+          docsHtml += csrfInputHtml;
+          docsHtml += '<button type="submit" class="card-btn card-btn-red">&#x2715;</button></form>';
+          docsHtml += '</div>';
+        });
+      } else {
+        docsHtml += '<p class="detail-docs-empty">Sin adjuntos todavía.</p>';
+      }
+      docsHtml += '</div>';
+      document.getElementById('detailDocs').innerHTML = docsHtml;
+
+      document.getElementById('detailActions').innerHTML = '<button class="btn-primary detail-btn" id="detailEditBtn">Editar</button>';
+      document.getElementById('detailEditBtn').addEventListener('click', function() {
+        // si la tarjeta esta pintada en ESTE tablero se usa esa (mismos datos
+        // que ya trae en sus data-*); si no (backlog/otro sprint/filtrada),
+        // se fabrica un elemento equivalente con el JSON ya obtenido, para
+        // que openTaskModal() reciba lo mismo que espera de una tarjeta real.
+        var realCard = document.querySelector('.card[data-task-id="' + d.task_id + '"]');
+        if (!realCard) {
+          realCard = document.createElement('div');
+          realCard.dataset.taskId = d.task_id;
+          realCard.dataset.title = d.title;
+          realCard.dataset.category = d.category || '';
+          realCard.dataset.status = d.status;
+          realCard.dataset.priority = d.priority;
+          realCard.dataset.description = d.description || '';
+          realCard.dataset.nextStep = d.next_step || '';
+          realCard.dataset.fechaInicio = d.fecha_inicio || '';
+          realCard.dataset.fechaFin = d.fecha_fin || '';
+          realCard.dataset.empresaId = d.empresa_id || '';
+          realCard.dataset.sistemaId = d.sistema_id || '';
+          realCard.dataset.iniciativaId = d.iniciativa_id || '';
+          realCard.dataset.anclada = d.anclada ? 'true' : 'false';
+          realCard.dataset.subtareas = d.subtareas || '';
+          realCard.dataset.tiempoEstimado = d.tiempo_estimado || '';
+          realCard.dataset.tiempoReal = d.tiempo_real || '';
+          realCard.dataset.sprintId = d.sprint_id || '';
+        }
+        openTaskModal(realCard);
+      });
+
+      document.getElementById('detailPanel').classList.add('open');
+      document.getElementById('detailOverlay').classList.add('open');
+      document.getElementById('board').classList.add('board-with-detail');
+    });
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('detailOverlay').classList.remove('open');
+  document.getElementById('board').classList.remove('board-with-detail');
+  document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('card-selected'); });
+}
+
+document.querySelectorAll('.card').forEach(function(card) {
+  card.addEventListener('click', function(e) {
+    if (e.target.closest('button') || e.target.closest('form') || e.target.closest('label')) return;
+    openDetail(this.dataset.taskId);
+  });
+});
+
+// abrir el panel de detalle de una tarea al llegar aqui desde fuera (buscador
+// general, etc.) via ?abrir_tarea=<id> -- openDetail() pide el detalle por
+// fetch, asi que funciona aunque la tarjeta no este pintada en este tablero.
+(function() {
+  var tid = new URLSearchParams(location.search).get('abrir_tarea');
+  if (tid) {
+    openDetail(tid);
+    var url = new URL(location.href);
+    url.searchParams.delete('abrir_tarea');
+    history.replaceState(null, '', url);
+  }
+})();
+
+// Mismo patron que arriba, pero para un marcador que guardo "+ Nueva
+// tarea" abierta (ver _base.html::abrirMarcadorModal) -- reabre el modal
+// de creacion en vez de el detalle de una tarea concreta.
+(function() {
+  if (new URLSearchParams(location.search).get('abrir') === 'nueva_tarea') {
+    openTaskModal(null);
+    var url = new URL(location.href);
+    url.searchParams.delete('abrir');
+    history.replaceState(null, '', url);
+  }
+})();
+</script>
+{% endblock %}

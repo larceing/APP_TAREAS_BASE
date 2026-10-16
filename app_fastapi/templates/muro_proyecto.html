@@ -1,0 +1,70 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} · Muro — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/sala_chat.css">
+<style>
+  .project-content { flex: 1; padding: 0 24px 20px; display: flex; flex-direction: column; min-height: 0; }
+  .mp-panel { flex: 1; min-height: 420px; height: calc(100vh - 290px); }
+  .mp-barra { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0 12px; flex-wrap: wrap; }
+  .mp-barra p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .mp-barra p a { color: var(--color-blue); font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a> › <a href="/espacio/{{ espacio.id }}/">{{ espacio.nombre }}</a>
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left"><h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1></div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="project-content">
+  <div class="mp-barra">
+    <p>Lo que pasa en este proyecto y lo que se habla de él. Todo esto también sale en el <a href="/muro/?espacio={{ espacio.id }}">muro de {{ espacio.nombre }}</a>, junto con el resto de proyectos del espacio.</p>
+    <button type="button" class="mu-btn-sec {% if silenciada %}mu-on{% endif %}" id="muSilenciar" onclick="muSilenciar()" title="Silencia el muro de todo el espacio: sin avisos en la campana">
+      {{ icon("bell", 13) }} <span id="muSilenciarTexto">{% if silenciada %}Espacio silenciado{% else %}Silenciar espacio{% endif %}</span>
+    </button>
+  </div>
+  <section class="mu-panel mp-panel">
+    <div class="mu-feed" id="muFeed"><div class="mu-vacio"><span>Cargando…</span></div></div>
+    {% if puede_escribir %}
+    <div class="mu-composer">
+      <textarea id="muTexto" rows="1" maxlength="4000" placeholder="Escribe sobre {{ proyecto.nombre }}… (Enter envía, Mayús+Enter salto de línea)"></textarea>
+      <button type="button" class="mu-enviar" id="muEnviar">{{ icon("arrow-right", 14) }} Enviar</button>
+    </div>
+    {% else %}
+    <div class="mu-solo-lectura">Eres Lector en este espacio: puedes leer el muro, pero no escribir.</div>
+    {% endif %}
+  </section>
+</div>
+
+<script src="/static/js/sala_chat.js"></script>
+<script>
+var muSala = SalaChat.iniciar({
+  base: '/proyecto/{{ proyecto.id }}/muro/',
+  yo: {{ user_id }},
+  esIT: {{ 'true' if es_it() else 'false' }},
+  borrarAvisoUrl: function(id) { return '/muro/aviso/' + id + '/borrar/'; },
+  iconos: {
+    'completó': '{{ icon("check-circle", 12) }}', 'reabrió': '{{ icon("arrow-right", 12) }}',
+    'empezó': '{{ icon("zap", 12) }}', 'creó': '{{ icon("plus", 12) }}', 'eliminó': '{{ icon("trash-2", 12) }}',
+    'restauró': '{{ icon("arrow-right", 12) }}', 'asignó': '{{ icon("user", 12) }}', 'reasignó': '{{ icon("user", 12) }}'
+  },
+  iconoDefecto: '{{ icon("activity", 12) }}',
+  iconoBorrar: '{{ icon("trash-2", 12) }}',
+  iconoAviso: '{{ icon("bell", 14) }}',
+  vacioHtml: '<div class="mu-vacio">{{ icon("activity", 34) }}<span>Todavía no hay actividad en este proyecto. Aquí irán apareciendo solas las tareas que se crean, se asignan o se completan{% if puede_escribir %}, y lo que escribáis sobre él{% endif %}.</span></div>'
+});
+function muSilenciar() {
+  muSala.silenciar().then(function(r) {
+    document.getElementById('muSilenciarTexto').textContent = r.silenciada ? 'Espacio silenciado' : 'Silenciar espacio';
+    document.getElementById('muSilenciar').classList.toggle('mu-on', r.silenciada);
+  });
+}
+</script>
+{% endblock %}

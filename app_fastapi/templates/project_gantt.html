@@ -1,0 +1,271 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} · Gantt — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .project-content { flex: 1; overflow-y: auto; padding: 24px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+  .empty-page { text-align: center; padding: 60px 20px; color: var(--muted); }
+
+  /* Todo el Gantt (leyenda + rejilla) va dentro de UNA sola tarjeta con
+     borde/sombra -- antes flotaba suelto sobre el fondo gris de la pagina,
+     unica seccion de toda la app sin el panel blanco que ya usan
+     resumen-section/doc-card/sprint-card-item/metric-card etc. */
+  .gantt-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+  .gantt-legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  .gantt-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .gantt-legend-item span { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  .gantt-mode-selector, .gantt-view-selector { display: flex; gap: var(--gap-tight); }
+  .btn-sm-active { background: var(--color-blue) !important; color: #fff !important; border-color: var(--color-blue) !important; }
+  .gantt-sprint-select { padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-size: 13px; cursor: pointer; }
+  /* Alto acotado con scroll propio -- antes crecia sin limite con muchas
+     tareas y "se salia de la pantalla" (el scroll de toda la pagina, no
+     del grafico). El sticky de .gantt-visual-header ya funciona mejor asi,
+     con un contenedor de scroll bien definido en vez del scroll general. */
+  .gantt-visual-wrap { overflow-x: auto; overflow-y: auto; max-height: 65vh; }
+  .gantt-visual { min-width: 800px; }
+  .gantt-visual-header { display: flex; background: var(--bg); border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .06em; position: sticky; top: 0; z-index: 10; }
+  .gantt-label-col { width: 220px; min-width: 220px; flex-shrink: 0; padding: 0 12px; display: flex; align-items: center; gap: 6px; font-size: 12px; overflow: hidden; border-right: 1px solid var(--border); }
+  .gantt-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gantt-timeline-col { flex: 1; position: relative; min-height: 32px; }
+  .gantt-visual-row { display: flex; align-items: center; border-bottom: 1px solid var(--border); min-height: 36px; transition: background .1s; }
+  .gantt-visual-row:last-child { border-bottom: none; }
+  .gantt-visual-row:hover { background: var(--bg); }
+  .gantt-row-milestone { background: var(--bg); }
+  .gantt-row-no-dates { opacity: .5; }
+  .gantt-no-dates-label { font-size: 11px; font-weight: 700; color: var(--muted); padding: 10px 12px 4px; letter-spacing: .06em; }
+  .gantt-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--color-orange); }
+  .gantt-status-dot[data-status="En curso"]  { background: var(--color-blue); }
+  .gantt-status-dot[data-status="En espera"] { background: var(--color-amber); }
+  .gantt-status-dot[data-status="Hecha"]     { background: var(--color-green); }
+  /* Barras por ESTADO (mismo criterio que .gantt-status-dot/.task-simple-
+     status de otras paginas), no por proyecto.color -- antes TODAS las
+     barras salian del mismo color vivo del proyecto, dominando la vista
+     entera en vez de distinguir Pendiente/En curso/En espera/Hecha. */
+  .gantt-bar-visual { position: absolute; height: 20px; border-radius: 3px; display: flex; align-items: center; padding: 0 6px; cursor: pointer; transition: filter .15s;
+    background: var(--color-orange-tint); border: 1px solid var(--color-orange); border-left: 3px solid var(--color-orange); }
+  .gantt-bar-visual[data-status="En curso"]  { background: var(--color-blue-tint); border-color: var(--color-blue); border-left-color: var(--color-blue); }
+  .gantt-bar-visual[data-status="En espera"] { background: var(--color-amber-tint); border-color: var(--color-amber); border-left-color: var(--color-amber); }
+  .gantt-bar-visual[data-status="Hecha"]     { background: var(--color-green-tint); border-color: var(--color-green); border-left-color: var(--color-green); }
+  .gantt-bar-visual:hover { filter: brightness(.95); }
+  .gantt-bar-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .gantt-milestone-pin { position: absolute; width: 12px; height: 12px; border-radius: 50%; top: 50%; transform: translate(-50%,-50%); cursor: pointer; }
+  .gantt-bar-empty { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--muted); font-style: italic; }
+  .gantt-legend-sprint { font-size: 12px; color: var(--color-blue-dark); padding: 2px 10px; background: var(--color-blue-tint); border-radius: 6px; border: 1px solid #bfdbfe; display: inline-flex; align-items: center; gap: 4px; }
+
+  .gantt-tooltip { position: fixed; z-index: 1000; pointer-events: none; background: var(--ink); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; max-width: 240px; box-shadow: var(--shadow-md); display: none; white-space: pre-line; }
+  .gantt-tooltip.visible { display: block; }
+  .gantt-tooltip-title { font-weight: 700; margin-bottom: 4px; }
+  .gantt-tooltip-meta  { color: #94a3b8; font-size: 11px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left"><h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1></div>
+  <div class="project-header-right">
+    <div class="gantt-view-selector">
+      {% for v in views %}
+      <a href="?view={{ v }}&mode={{ mode }}{% if active_sprint %}&sprint_id={{ active_sprint.sprint_id }}{% endif %}"
+         class="btn-secondary btn-sm {% if view == v %}btn-sm-active{% endif %}">{{ v }}</a>
+      {% endfor %}
+    </div>
+    {% if proyecto.tipo == 'scrum' %}
+    <div class="gantt-mode-selector">
+      <a href="?view={{ view }}&mode=fechas" class="btn-secondary btn-sm {% if mode == 'fechas' %}btn-sm-active{% endif %}">{{ icon("calendar", 13) }} Por fechas</a>
+      <a href="?view={{ view }}&mode=sprint{% if active_sprint %}&sprint_id={{ active_sprint.sprint_id }}{% endif %}" class="btn-secondary btn-sm {% if mode == 'sprint' %}btn-sm-active{% endif %}">{{ icon("zap", 13) }} Por sprint</a>
+    </div>
+    {% endif %}
+    {% if mode == 'sprint' and proj_sprints %}
+    <select class="gantt-sprint-select" onchange="window.location='?view={{ view }}&mode=sprint&sprint_id='+this.value">
+      {% for s in proj_sprints %}
+      <option value="{{ s.sprint_id }}" {% if active_sprint and s.sprint_id == active_sprint.sprint_id %}selected{% endif %}>{{ s.nombre }} ({{ s.estado }})</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="project-content">
+{% if gantt_start and gantt_end %}
+
+<div class="gantt-card">
+<div class="gantt-legend">
+  <div class="gantt-legend-item"><span style="background:var(--color-orange)"></span> Pendiente</div>
+  <div class="gantt-legend-item"><span style="background:var(--color-blue)"></span> En curso</div>
+  <div class="gantt-legend-item"><span style="background:var(--color-amber)"></span> En espera</div>
+  <div class="gantt-legend-item"><span style="background:var(--color-green)"></span> Hecha</div>
+  <div class="gantt-legend-item"><span style="background:#e2e8f0"></span> Sin fechas</div>
+  <div class="gantt-legend-item"><span style="background:var(--selected);width:12px;height:12px;border-radius:50%"></span> Hito</div>
+  {% if active_sprint %}
+  <div class="gantt-legend-sprint">{{ icon("zap", 12) }} {{ active_sprint.nombre }} · {{ active_sprint.fecha_inicio }} → {{ active_sprint.fecha_fin }}</div>
+  {% endif %}
+</div>
+
+<div class="gantt-visual-wrap">
+  <div class="gantt-visual" id="ganttVisual">
+    <div class="gantt-visual-header">
+      <div class="gantt-label-col">Tarea</div>
+      <div class="gantt-timeline-col" id="ganttTimelineHeader"></div>
+    </div>
+
+    {% set hitos_con_fecha = proj_ms|selectattr("fecha")|list %}
+    {% if hitos_con_fecha %}
+    {# Un hito no es una tarea (no ocupa un rango de dias) -- es un marcador
+       puntual, asi que todos comparten UNA sola fila "Hitos" con varios
+       pines en la misma linea de tiempo, en vez de una fila entera por
+       hito (que antes los hacia parecer tareas mas, robando alto util a la
+       lista de tareas reales). #}
+    <div class="gantt-visual-row gantt-row-milestone" data-start="{{ gantt_start }}" data-end="{{ gantt_end }}">
+      <div class="gantt-label-col">
+        <span style="color:var(--selected)">{{ icon("flag", 12) }}</span>
+        <span class="gantt-label-text">Hitos</span>
+      </div>
+      <div class="gantt-timeline-col">
+        {% for m in hitos_con_fecha %}
+        <div class="gantt-milestone-pin"
+             data-date="{{ m.fecha }}" data-title="{{ m.nombre }}"
+             data-status="{% if m.completado %}Completado{% else %}Pendiente{% endif %}"
+             style="background:{% if m.completado %}var(--color-green){% else %}var(--selected){% endif %}"></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% for t in tasks_with_dates %}
+    <div class="gantt-visual-row"
+         data-start="{{ gantt_start }}" data-end="{{ gantt_end }}"
+         data-task-start="{{ t.fecha_inicio }}" data-task-end="{{ t.fecha_fin }}"
+         data-title="{{ t.title }}" data-status="{{ t.status }}"
+         data-category="{{ t.category }}" data-priority="{{ t.priority }}"
+         data-next="{{ t.next_step }}" data-type="task">
+      <div class="gantt-label-col">
+        <span class="gantt-status-dot" data-status="{{ t.status }}"></span>
+        <span class="gantt-label-text">{{ t.title }}</span>
+      </div>
+      <div class="gantt-timeline-col">
+        <div class="gantt-bar-visual" data-status="{{ t.status }}">
+          <span class="gantt-bar-label">{{ t.status }}</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if tasks_without_dates %}
+    <div class="gantt-no-dates-label">Sin fechas asignadas</div>
+    {% for t in tasks_without_dates %}
+    <div class="gantt-visual-row gantt-row-no-dates">
+      <div class="gantt-label-col">
+        <span class="gantt-status-dot" data-status="{{ t.status }}"></span>
+        <span class="gantt-label-text">{{ t.title }}</span>
+      </div>
+      <div class="gantt-timeline-col"><div class="gantt-bar-empty">Añade fechas para verla en el timeline</div></div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+</div>
+
+{% else %}
+<div class="empty-page">
+  <p>Sin fechas todavía para dibujar un Gantt.</p>
+  <p style="font-size:13px;color:var(--muted);margin-top:8px;">Añade fecha de inicio/fin a alguna tarea, o un hito con fecha, desde el Tablero o Resumen.</p>
+  <a href="/proyecto/{{ proyecto.id }}/tablero/" class="btn-primary" style="margin-top:16px">Ir al tablero</a>
+</div>
+{% endif %}
+</div>
+
+<div class="gantt-tooltip" id="ganttTooltip">
+  <div class="gantt-tooltip-title" id="ganttTooltipTitle"></div>
+  <div class="gantt-tooltip-meta" id="ganttTooltipMeta"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltip      = document.getElementById('ganttTooltip');
+    var tooltipTitle = document.getElementById('ganttTooltipTitle');
+    var tooltipMeta  = document.getElementById('ganttTooltipMeta');
+
+    function daysBetween(d1, d2) {
+        try { return Math.round((new Date(d2) - new Date(d1)) / 86400000); }
+        catch(e) { return 0; }
+    }
+
+    function moveTooltip(e) {
+        var x = e.clientX + 14, y = e.clientY + 14;
+        if (x + 260 > window.innerWidth)  x = e.clientX - 260;
+        if (y + 80  > window.innerHeight) y = e.clientY - 80;
+        tooltip.style.left = x + 'px';
+        tooltip.style.top  = y + 'px';
+    }
+
+    function addTooltip(el, title, meta) {
+        if (!el) return;
+        el.addEventListener('mouseenter', function(e) {
+            tooltipTitle.textContent = title;
+            tooltipMeta.textContent  = meta;
+            tooltip.classList.add('visible');
+            moveTooltip(e);
+        });
+        el.addEventListener('mousemove', moveTooltip);
+        el.addEventListener('mouseleave', function() { tooltip.classList.remove('visible'); });
+    }
+
+    document.querySelectorAll('.gantt-visual-row[data-type="task"]').forEach(function(row) {
+        var totalDays    = daysBetween(row.dataset.start, row.dataset.end) || 1;
+        var offsetDays   = daysBetween(row.dataset.start, row.dataset.taskStart);
+        var durationDays = daysBetween(row.dataset.taskStart, row.dataset.taskEnd) || 1;
+        var leftPct      = (offsetDays / totalDays * 100).toFixed(2);
+        var widthPct     = Math.max(durationDays / totalDays * 100, 2).toFixed(2);
+        var bar = row.querySelector('.gantt-bar-visual');
+        if (bar) { bar.style.left = leftPct + '%'; bar.style.width = widthPct + '%'; }
+        addTooltip(bar, row.dataset.title,
+            row.dataset.status + ' · ' + row.dataset.category +
+            '\n' + row.dataset.taskStart + ' → ' + row.dataset.taskEnd);
+    });
+
+    // Varios pines por fila (uno por hito, todos en la fila "Hitos") en vez
+    // de una fila por hito -- cada pin busca start/end en su propia fila.
+    document.querySelectorAll('.gantt-milestone-pin[data-date]').forEach(function(pin) {
+        var row = pin.closest('.gantt-visual-row');
+        if (!row) return;
+        var totalDays  = daysBetween(row.dataset.start, row.dataset.end) || 1;
+        var offsetDays = daysBetween(row.dataset.start, pin.dataset.date);
+        var leftPct    = Math.max(0, offsetDays / totalDays * 100).toFixed(2);
+        pin.style.left = leftPct + '%';
+        addTooltip(pin, pin.dataset.title, '📅 ' + pin.dataset.date + ' · ' + pin.dataset.status);
+    });
+
+    var rows = document.querySelectorAll('.gantt-visual-row[data-start]');
+    if (rows.length) {
+        var ganttStart = rows[0].dataset.start;
+        var ganttEnd   = rows[0].dataset.end;
+        var totalDays  = daysBetween(ganttStart, ganttEnd) || 1;
+        var header     = document.getElementById('ganttTimelineHeader');
+        var months     = 'Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic'.split(',');
+        var html       = '<div style="position:relative;height:100%;min-height:28px;">';
+        var cur = new Date(ganttStart); cur.setDate(1);
+        while (cur <= new Date(ganttEnd)) {
+            var offset  = daysBetween(ganttStart, cur.toISOString().slice(0,10));
+            var leftPct = Math.max(0, offset / totalDays * 100).toFixed(2);
+            html += '<span style="position:absolute;left:'+leftPct+'%;font-size:10px;color:var(--muted);white-space:nowrap;border-left:1px solid var(--border);padding-left:3px;">' +
+                    months[cur.getMonth()] + ' ' + cur.getFullYear() + '</span>';
+            cur.setMonth(cur.getMonth() + 1);
+        }
+        html += '</div>';
+        if (header) header.innerHTML = html;
+    }
+});
+</script>
+{% endblock %}

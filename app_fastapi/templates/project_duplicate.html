@@ -1,0 +1,172 @@
+{% extends "_base.html" %}
+{% block title %}Duplicar {{ original.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .project-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px 16px; background: var(--panel); border-top: 4px solid {{ original.color }}; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .project-header-left { flex: 1; }
+  .project-header-right { flex-shrink: 0; padding-top: 4px; display: flex; align-items: center; gap: 8px; }
+  .project-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+  .project-desc { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+
+  .project-content { flex: 1; overflow-y: auto; padding: 24px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin-bottom: 4px; }
+  .input-lg { font-size: 15px; padding: 9px 12px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+  .duplicate-wrap { max-width: 700px; }
+  .dup-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 16px; }
+  .dup-section-title { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin-bottom: 16px; }
+  .dup-option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dup-option-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--bg); }
+  .dup-option-card-highlight { border-color: var(--color-blue); background: var(--color-blue-tint); }
+  .dup-option-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .dup-option-icon { display: flex; }
+  .dup-option-name { font-weight: 700; font-size: 13px; }
+  .dup-radio-group { display: flex; flex-direction: column; gap: 8px; }
+  .dup-radio { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: border-color .15s, background .15s; }
+  .dup-radio:has(input:checked) { border-color: var(--selected); background: color-mix(in srgb, var(--selected) 10%, var(--panel)); }
+  .dup-radio:hover { background: var(--panel); }
+  .dup-radio input { display: none; }
+  .dup-radio span { font-size: 13px; font-weight: 600; }
+  .dup-radio small { font-size: 11px; color: var(--muted); }
+  .dup-check { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+  .dup-check input { margin-bottom: 4px; }
+  .dup-check span { font-size: 13px; font-weight: 600; }
+  .dup-check small { font-size: 11px; color: var(--muted); }
+  .dup-summary-grid { display: flex; gap: 24px; }
+  .dup-summary-item { display: flex; flex-direction: column; gap: 2px; }
+  .dup-summary-value { font-size: 20px; font-weight: 800; }
+  .dup-summary-label { font-size: 11px; color: var(--muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if original.espacio_id %} › <a href="/espacio/{{ original.espacio_id }}/">{{ original.espacio_nombre }}</a>{% endif %}
+   › <a href="/proyecto/{{ original.id }}/">{{ original.nombre }}</a> › <span class="breadcrumb-current">Duplicar</span>
+</div>
+<div class="project-header">
+  <div class="project-header-left">
+    <h1 class="project-title">Duplicar proyecto</h1>
+    <p class="project-desc">Copia de <strong>{{ original.nombre }}</strong></p>
+  </div>
+  <div class="project-header-right">
+    <a href="/proyecto/{{ original.id }}/" class="btn-secondary">Cancelar</a>
+  </div>
+</div>
+
+<div class="project-content">
+  <div class="duplicate-wrap">
+    <form method="post" action="/proyecto/{{ original.id }}/duplicar/">{{ csrf_field() }}
+
+      <div class="dup-section">
+        <div class="form-group">
+          <label>NOMBRE DEL NUEVO PROYECTO</label>
+          <input type="text" name="nombre" value="{{ original.nombre }} (copia)" class="input-lg" required>
+        </div>
+      </div>
+
+      <div class="dup-section">
+        <div class="dup-section-title">QUÉ COPIAR</div>
+        <div class="dup-option-grid">
+
+          <div class="dup-option-card">
+            <div class="dup-option-header">
+              <span class="dup-option-icon">{{ icon("list", 18) }}</span>
+              <span class="dup-option-name">Tareas</span>
+            </div>
+            <div class="dup-radio-group">
+              <label class="dup-radio">
+                <input type="radio" name="copiar_tareas" value="pendientes" checked>
+                <span>Solo pendientes</span>
+                <small>Las tareas ya hechas se quedan en el proyecto original.</small>
+              </label>
+              <label class="dup-radio">
+                <input type="radio" name="copiar_tareas" value="todas">
+                <span>Todas</span>
+                <small>Incluidas las ya hechas (todas nacen como "Pendiente" en el nuevo proyecto).</small>
+              </label>
+              <label class="dup-radio">
+                <input type="radio" name="copiar_tareas" value="ninguna">
+                <span>Ninguna</span>
+                <small>Solo se crea el proyecto, sin tareas.</small>
+              </label>
+            </div>
+          </div>
+
+          <div class="dup-option-card">
+            <div class="dup-option-header">
+              <span class="dup-option-icon">{{ icon("calendar", 18) }}</span>
+              <span class="dup-option-name">Fechas de las tareas</span>
+            </div>
+            <div class="dup-radio-group">
+              <label class="dup-radio">
+                <input type="radio" name="fechas" value="limpiar" checked>
+                <span>Limpiar fechas</span>
+                <small>Las tareas copiadas nacen sin fecha de inicio/fin.</small>
+              </label>
+              <label class="dup-radio">
+                <input type="radio" name="fechas" value="mantener">
+                <span>Mantener fechas</span>
+                <small>Se copian las fechas originales (las ya vencidas se limpian igualmente).</small>
+              </label>
+            </div>
+          </div>
+
+          <div class="dup-option-card">
+            <div class="dup-option-header">
+              <span class="dup-option-icon">{{ icon("check-circle", 18) }}</span>
+              <span class="dup-option-name">Hitos</span>
+            </div>
+            <label class="dup-check">
+              <input type="checkbox" name="copiar_hitos">
+              <span>Copiar hitos</span>
+              <small>Se copian sin marcar como completados.</small>
+            </label>
+          </div>
+
+          {% if original.tipo == 'scrum' %}
+          <div class="dup-option-card dup-option-card-highlight">
+            <div class="dup-option-header">
+              <span class="dup-option-icon">{{ icon("zap", 18) }}</span>
+              <span class="dup-option-name">Sprint</span>
+            </div>
+            <label class="dup-check">
+              <input type="checkbox" name="crear_sprint" checked>
+              <span>Crear "Sprint 1"</span>
+              <small>Sprint activo de 14 días a partir de hoy; las tareas copiadas se meten en él.</small>
+            </label>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      <div class="dup-section">
+        <div class="dup-section-title">PROYECTO ORIGINAL</div>
+        <div class="dup-summary-grid">
+          <div class="dup-summary-item">
+            <span class="dup-summary-value">{{ original.tipo|upper }}</span>
+            <span class="dup-summary-label">Tipo</span>
+          </div>
+          <div class="dup-summary-item">
+            <span class="dup-summary-value">{{ proj_count_original }}</span>
+            <span class="dup-summary-label">Tareas activas</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="justify-content:flex-start;padding:0">
+        <a href="/proyecto/{{ original.id }}/" class="btn-secondary">Cancelar</a>
+        <button type="submit" class="btn-primary">Duplicar proyecto</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

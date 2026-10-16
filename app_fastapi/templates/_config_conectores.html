@@ -1,0 +1,96 @@
+{# Panel Configuracion -> Conectores (incluido desde configuracion.html). POSTs en routers/conectores.py #}
+<div class="config-panel">
+  <div class="config-panel-head">
+    <div><h2>Conectores de entrada</h2><p>Traen elementos de otros sistemas (una API, MantisBT…) y los convierten en tareas de un proyecto. Cada elemento se importa una sola vez.</p></div>
+  </div>
+  {% if entorno_actual() == 'test' %}
+  <div class="config-callout">{{ icon("zap", 14) }} Estás en el entorno de PRUEBAS: la sincronización automática está en pausa. "Sincronizar ahora" funciona igual (contra la BD de pruebas).</div>
+  {% endif %}
+
+  <div class="config-table" style="margin-bottom:20px;">
+    {% for c in valores_tab %}
+    <div class="config-row">
+      <span class="config-name" style="font-size:12.5px">{{ c.nombre }}{% if not c.activo %} <span class="config-meta">(pausado)</span>{% endif %}</span>
+      <span class="config-meta">{{ conector_tipos[c.tipo].nombre if c.tipo in conector_tipos else c.tipo }}</span>
+      <span class="config-meta">→ {{ conector_proyectos.get(c.proyecto_id, "sin proyecto") }}</span>
+      <span class="config-meta">{{ ("cada " ~ c.intervalo_min ~ " min") if c.intervalo_min else "solo a mano" }}</span>
+      <span class="config-meta" title="{{ c.ultimo_resultado }}" style="{% if c.ultimo_ok == False %}color:#b91c1c{% endif %}">
+        {% if c.ultima_sync %}{{ c.ultima_sync }}: {{ c.ultimo_resultado|truncate(60) }}{% else %}nunca sincronizado{% endif %}
+      </span>
+      <span class="config-actions" style="display:flex;gap:6px;align-items:center;">
+        <form method="post" action="/configuracion/conectores/{{ c.conector_id }}/sincronizar/">{{ csrf_field() }}<button class="btn-primary btn-sm" type="submit">Sincronizar ahora</button></form>
+        <form method="post" action="/configuracion/conectores/{{ c.conector_id }}/probar/">{{ csrf_field() }}<button class="btn-secondary btn-sm" type="submit">Probar</button></form>
+        <form method="post" action="/configuracion/conectores/{{ c.conector_id }}/activo/">{{ csrf_field() }}<button class="btn-secondary btn-sm" type="submit">{{ "Pausar" if c.activo else "Activar" }}</button></form>
+        <a href="/configuracion/?tipo=conectores&editar={{ c.conector_id }}" title="Editar">{{ icon("edit-2", 14) }}</a>
+        <form method="post" action="/configuracion/conectores/{{ c.conector_id }}/eliminar/" onsubmit="return confirm('¿Eliminar este conector? Las tareas que ya creó se quedan.')">{{ csrf_field() }}<button type="submit" title="Eliminar" style="background:none;border:none;cursor:pointer;color:var(--muted)">{{ icon("trash-2", 14) }}</button></form>
+      </span>
+    </div>
+    {% else %}<p class="config-empty">Sin conectores todavía.</p>{% endfor %}
+  </div>
+
+  {% if not conector_form %}
+  <div class="config-subsection">
+    <label>Nuevo conector</label>
+    <p>Elige de dónde vienen los datos:</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      {% for clave, t in conector_tipos.items() %}
+      <a class="btn-secondary btn-sm" href="/configuracion/?tipo=conectores&nuevo={{ clave }}" title="{{ t.descripcion }}">{{ t.nombre }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  {% set f = conector_form %}
+  {% set t = conector_tipos[f.tipo] %}
+  <form class="config-form-card" method="post" action="/configuracion/conectores/guardar/" style="max-width:640px;">{{ csrf_field() }}
+    <h3 style="margin:0 0 4px;font-size:15px;">{{ "Editar" if f.conector_id else "Nuevo" }} conector · {{ t.nombre }}</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">{{ t.descripcion }}</p>
+    <input type="hidden" name="tipo" value="{{ f.tipo }}">
+    {% if f.conector_id %}<input type="hidden" name="conector_id" value="{{ f.conector_id }}">{% endif %}
+    <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" maxlength="150" required value="{{ f.nombre }}"></div>
+
+    {% for campo in t.campos %}
+    {% set valor = f.config.get(campo.clave, campo.defecto) %}
+    <div class="form-group">
+      {% if campo.tipo == 'si_no' %}
+      <div class="form-check"><input type="checkbox" name="cfg_{{ campo.clave }}" id="cfg_{{ campo.clave }}" value="1" {% if valor == '1' %}checked{% endif %}><label for="cfg_{{ campo.clave }}">{{ campo.etiqueta }}</label></div>
+      {% else %}
+      <label>{{ campo.etiqueta|upper }}{% if campo.obligatorio %} *{% endif %}</label>
+      {% if campo.tipo == 'secreto' %}
+      <input type="password" name="cfg_{{ campo.clave }}" autocomplete="new-password" placeholder="{{ '•••••• (guardado; déjalo vacío para conservarlo)' if valor else '' }}">
+      {% elif campo.tipo == 'lista' %}
+      <select name="cfg_{{ campo.clave }}">{% for v, e in campo.opciones %}<option value="{{ v }}" {% if v == valor %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      {% else %}
+      <input type="{{ 'number' if campo.tipo == 'numero' else ('url' if campo.tipo == 'url' else 'text') }}" name="cfg_{{ campo.clave }}" value="{{ valor }}">
+      {% endif %}
+      {% endif %}
+      {% if campo.ayuda %}<p style="font-size:11.5px;color:var(--muted);margin:3px 0 0;">{{ campo.ayuda }}</p>{% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="config-subsection">
+      <label>Qué hacer con lo que llega</label>
+      <div class="form-row">
+        <div class="form-group"><label>PROYECTO DESTINO *</label>
+          <select name="proyecto_id" required>
+            {% for pid, pnombre in conector_proyectos.items() %}<option value="{{ pid }}" {% if pid == f.proyecto_id %}selected{% endif %}>{{ pnombre }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group"><label>COLUMNA INICIAL</label><input type="text" name="estado_inicial" value="{{ f.estado_inicial }}" placeholder="vacío = la primera del tablero"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>ASIGNAR A</label>
+          <select name="asignar_a">
+            <option value="">— nadie (salvo que el origen traiga un usuario que exista aquí) —</option>
+            {% for u in conector_usuarios %}<option value="{{ u.id }}" {% if u.id == f.asignar_a %}selected{% endif %}>{{ u.nombre_completo }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="flex:0 0 170px;"><label>CADA (MINUTOS)</label><input type="number" name="intervalo_min" min="0" max="1440" value="{{ f.intervalo_min }}"><p style="font-size:11.5px;color:var(--muted);margin:3px 0 0;">0 = solo a mano</p></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" type="submit">Guardar</button>
+      <a class="btn-secondary" href="/configuracion/?tipo=conectores">Cancelar</a>
+    </div>
+  </form>
+  {% endif %}
+</div>

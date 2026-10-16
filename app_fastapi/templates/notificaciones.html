@@ -1,0 +1,93 @@
+{% extends "_base.html" %}
+{% block title %}Notificaciones — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .nt-page { padding: 24px 28px; max-width: 820px; margin: 0 auto; }
+  .nt-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .nt-head h1 { font-size: 21px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .nt-head p { margin: 0; font-size: 13px; color: var(--muted); }
+  .nt-prefs { display: flex; align-items: center; gap: 12px; font-size: 12.5px; flex-wrap: wrap; }
+  .nt-prefs label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; color: var(--ink); }
+  .nt-prefs button { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); padding: 5px 11px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .nt-prefs button:hover { background: var(--bg); }
+  .nt-estado { color: var(--muted); }
+  .nt-lista { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); overflow: hidden; }
+  .nt-dia { padding: 8px 16px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--bg); border-bottom: 1px solid var(--border); }
+  .nt-item { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--ink); transition: background .12s; }
+  .nt-item:last-child { border-bottom: none; }
+  .nt-item:hover { background: color-mix(in srgb, var(--bg) 60%, var(--panel)); }
+  .nt-item.nt-nueva { background: color-mix(in srgb, var(--color-blue) 5%, var(--panel)); }
+  .nt-icono { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .nt-tipo-nota { background: #dbeafe; color: #1d4ed8; }
+  .nt-tipo-recordatorio { background: #fef3c7; color: #b45309; }
+  .nt-tipo-tarea_asignada { background: #ede9fe; color: #6d28d9; }
+  .nt-tipo-muro { background: #ccfbf1; color: #0f766e; }
+  .nt-tipo-aviso { background: #fef3c7; color: #b45309; }
+  .nt-tipo-vigia { background: #fee2e2; color: #b91c1c; }
+  .nt-tipo-otro { background: var(--bg); color: var(--muted); }
+  .nt-texto { flex: 1; font-size: 13.5px; line-height: 1.45; }
+  .nt-nueva .nt-texto { font-weight: 600; }
+  .nt-hora { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .nt-vacio { padding: 48px 16px; text-align: center; color: var(--muted); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .nt-vacio svg { opacity: .35; }
+  @media (max-width: 700px) { .nt-page { padding: 16px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nt-page">
+  <div class="nt-head">
+    <div>
+      <h1>{{ icon("bell", 20) }} Notificaciones</h1>
+      <p>Notas recibidas, recordatorios, tareas que te asignan, mensajes en los muros y avisos. Al abrir esta lista quedan todas marcadas como leídas.</p>
+    </div>
+    <div class="nt-prefs">
+      <label><input type="checkbox" id="ntEmergentes" onchange="ntCambiarEmergentes(this)"> Avisos emergentes</label>
+      <button type="button" id="ntNativas" onclick="ntActivarNativas()">{{ icon("bell", 13) }} Activar avisos del navegador</button>
+      <span class="nt-estado" id="ntNativasEstado"></span>
+    </div>
+  </div>
+
+  <div class="nt-lista">
+    {% set iconos = {'nota': 'inbox', 'recordatorio': 'clock', 'tarea_asignada': 'check-circle', 'muro': 'message-circle', 'aviso': 'bell', 'vigia': 'server'} %}
+    {% set dia_actual = namespace(v='') %}
+    {% for n in notificaciones %}
+    {% set dia = n.creada_en[0:10] %}
+    {% if dia != dia_actual.v %}{% set dia_actual.v = dia %}<div class="nt-dia">{% if dia == hoy %}Hoy{% elif dia == ayer %}Ayer{% else %}{{ dia[8:10] }}/{{ dia[5:7] }}/{{ dia[0:4] }}{% endif %}</div>{% endif %}
+    <a class="nt-item {% if not n.leida %}nt-nueva{% endif %}" href="{{ n.url or '#' }}">
+      <span class="nt-icono nt-tipo-{{ n.tipo if n.tipo in iconos else 'otro' }}">{{ icon(iconos.get(n.tipo, 'bell'), 15) }}</span>
+      <span class="nt-texto">{{ n.texto }}</span>
+      <span class="nt-hora">{{ n.creada_en[11:16] }}</span>
+    </a>
+    {% else %}
+    <div class="nt-vacio">{{ icon("bell", 36) }}<span>No tienes notificaciones todavía.</span></div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+// preferencia guardada en este navegador (no en tu perfil), igual que en CS Manager
+(function() {
+  var sin = null;
+  try { sin = localStorage.getItem('notifSinEmergentes'); } catch (e) {}
+  document.getElementById('ntEmergentes').checked = sin !== '1';
+  ntPintarNativas();
+})();
+function ntCambiarEmergentes(cb) {
+  try { localStorage.setItem('notifSinEmergentes', cb.checked ? '0' : '1'); } catch (e) {}
+}
+function ntPintarNativas() {
+  var estado = document.getElementById('ntNativasEstado'), btn = document.getElementById('ntNativas');
+  if (!window.Notification) { btn.hidden = true; estado.textContent = 'Este navegador no admite avisos.'; return; }
+  btn.hidden = Notification.permission !== 'default';
+  estado.textContent = Notification.permission === 'granted' ? '✓ Avisos del navegador activados'
+    : Notification.permission === 'denied' ? 'Avisos del navegador bloqueados (permisos del sitio)' : '';
+}
+function ntActivarNativas() {
+  Notification.requestPermission().then(ntPintarNativas);
+}
+// al entrar aqui ya estan todas leidas: refrescar la campana al momento
+if (typeof notifConsultar === 'function') notifConsultar();
+</script>
+{% endblock %}

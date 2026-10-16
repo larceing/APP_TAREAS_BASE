@@ -1,0 +1,263 @@
+{% extends "_base.html" %}
+{% block title %}Dashboard — {{ proyecto.nombre }} — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+
+  .dashboard-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+  .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .dash-section { background: var(--panel); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; }
+  .dash-section-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+  .dash-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+  .dash-stat { background: var(--bg); border-radius: 6px; padding: 10px 8px; text-align: center; }
+  .dash-stat-num { font-size: 22px; font-weight: 800; line-height: 1.2; display: block; }
+  .dash-stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; display: block; }
+  .dash-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .dash-bar-label { width: 130px; font-size: 12px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .dash-cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+  .dash-bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .dash-bar-fill  { height: 100%; border-radius: 4px; transition: width .4s; background: var(--color-gray); }
+  .dash-bar-fill[data-status="Pendiente"]  { background: var(--color-orange); }
+  .dash-bar-fill[data-status="En curso"]   { background: var(--color-blue); }
+  .dash-bar-fill[data-status="En espera"]  { background: var(--color-amber); }
+  .dash-bar-fill[data-status="Hecha"]      { background: var(--color-green); }
+  .dash-bar-fill[data-priority="Alta"]     { background: var(--color-red); }
+  .dash-bar-fill[data-priority="Normal"]   { background: var(--color-blue); }
+  .dash-bar-fill[data-priority="Baja"]     { background: var(--color-gray); }
+  .dash-bar-count { width: 60px; font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
+  .dash-overdue-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .dash-overdue-row:last-child { border-bottom: none; }
+  .dash-overdue-date  { font-size: 11px; font-weight: 700; color: var(--color-red); white-space: nowrap; }
+  .dash-overdue-title { flex: 1; font-weight: 600; }
+  .dash-overdue-status { font-size: 11px; color: var(--muted); }
+  .dash-sprint-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .dash-sprint-name { width: 130px; font-size: 12px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .burndown-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .burndown-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .bd-ideal-dot { display: inline-block; width: 16px; height: 2px; background: repeating-linear-gradient(90deg, #2563eb 0 4px, transparent 4px 8px); vertical-align: middle; }
+  .bd-actual-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #db2777; vertical-align: middle; }
+  .burndown-wrap { padding: 4px 0; }
+  .burndown-canvas { width: 100%; height: 140px; display: block; }
+  .heatmap-wrap { overflow-x: auto; }
+  .heatmap-canvas { display: block; height: auto; min-width: 400px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc">{{ proyecto.descripcion }}</p>{% endif %}
+    <div class="project-meta-row">
+      <span class="proj-status-badge" data-estado="{{ proyecto.estado }}">{{ proyecto.estado }}</span>
+      {% if proyecto.responsable %}<span class="project-meta-item">Responsable: {{ proyecto.responsable }}</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="dashboard-content">
+  <div class="dash-grid">
+    <div class="dash-section">
+      <div class="dash-section-title">Progreso general</div>
+      <div class="dash-stat-row">
+        <div class="dash-stat"><span class="dash-stat-num">{{ total }}</span><span class="dash-stat-label">Tareas totales</span></div>
+        <div class="dash-stat"><span class="dash-stat-num" style="color:var(--color-green)">{{ done_pct }}%</span><span class="dash-stat-label">Completadas</span></div>
+        <div class="dash-stat"><span class="dash-stat-num" style="color:var(--color-red)">{{ overdue|length }}</span><span class="dash-stat-label">Vencidas</span></div>
+      </div>
+    </div>
+
+    <div class="dash-section">
+      <div class="dash-section-title">Por estado</div>
+      {% for status_name, count in by_status %}
+      <div class="dash-bar-row">
+        <span class="dash-bar-label">{{ status_name }}</span>
+        <div class="dash-bar-track">
+          {% if total %}<div class="dash-bar-fill" data-status="{{ status_name }}" style="width:{{ (count / total * 100)|round|int }}%"></div>{% endif %}
+        </div>
+        <span class="dash-bar-count">{{ count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if by_cat %}
+  <div class="dash-section">
+    <div class="dash-section-title">Por categoría</div>
+    {% for cat_nombre, cat_color, pending, total_cat in by_cat %}
+    <div class="dash-bar-row">
+      <span class="dash-bar-label"><span class="dash-cat-dot" style="background:{{ cat_color }}"></span>{{ cat_nombre }}</span>
+      <div class="dash-bar-track">
+        <div class="dash-bar-fill" style="width:{{ (total_cat / cat_max * 100)|round|int if cat_max else 0 }}%;background:{{ cat_color }}"></div>
+      </div>
+      <span class="dash-bar-count">{{ pending }}/{{ total_cat }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="dash-section">
+    <div class="dash-section-title">Por prioridad</div>
+    {% for prio_name, count in by_priority %}
+    <div class="dash-bar-row">
+      <span class="dash-bar-label">{{ prio_name }}</span>
+      <div class="dash-bar-track">
+        {% if p_max %}<div class="dash-bar-fill" data-priority="{{ prio_name }}" style="width:{{ (count / p_max * 100)|round|int }}%"></div>{% endif %}
+      </div>
+      <span class="dash-bar-count">{{ count }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if overdue %}
+  <div class="dash-section">
+    <div class="dash-section-title" style="color:var(--color-red)">Tareas vencidas ({{ overdue|length }})</div>
+    {% for task in overdue %}
+    <div class="dash-overdue-row">
+      <span class="dash-overdue-title">{{ task.title }}</span>
+      <span class="dash-overdue-date">{{ task.fecha_fin }}</span>
+      <span class="dash-overdue-status">{{ task.status }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if sprint_stats %}
+  <div class="dash-section">
+    <div class="dash-section-title">Velocidad de sprints</div>
+    {% for ss in sprint_stats %}
+    <div class="dash-sprint-row">
+      <span class="dash-sprint-name">{{ ss.sprint.nombre }}</span>
+      <div class="dash-bar-track"><div class="dash-bar-fill" style="width:{{ ss.pct }}%;background:{{ proyecto.color }}"></div></div>
+      <span class="dash-bar-count">{{ ss.hecha }}/{{ ss.total }} ({{ ss.pct }}%)</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if active_sprint and burndown_json != '[]' %}
+  <div class="dash-section">
+    <div class="burndown-header">
+      <span class="dash-section-title" style="margin-bottom:0">Burndown — {{ active_sprint.nombre }}</span>
+      <span class="burndown-legend"><span class="bd-ideal-dot"></span>Ideal&nbsp; <span class="bd-actual-dot"></span>Real</span>
+    </div>
+    <div class="burndown-wrap"><canvas id="burndownCanvas" class="burndown-canvas"></canvas></div>
+  </div>
+  <script>
+  (function(){
+      var data  = {{ burndown_json|safe }};
+      var total = {{ burndown_total }};
+      if (!data.length) return;
+      var canvas = document.getElementById('burndownCanvas');
+      var ctx    = canvas.getContext('2d');
+      var W = canvas.offsetWidth || 700;
+      var H = 140;
+      canvas.width  = W;
+      canvas.height = H;
+      var pad = {t:16, r:16, b:32, l:36};
+      var iW  = W - pad.l - pad.r;
+      var iH  = H - pad.t - pad.b;
+      var n   = data.length;
+      var gridC  = 'rgba(0,0,0,.07)';
+      var textC  = '#6b7280';
+      var idealC = '#2563eb';
+      var actualC= '#db2777';
+      function xp(i){ return pad.l + (i/(n-1||1))*iW; }
+      function yp(v){ return pad.t + (1 - v/total)*iH; }
+      ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+      [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
+          var y = pad.t + f*iH;
+          ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+iW, y); ctx.stroke();
+          ctx.fillStyle = textC; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+          ctx.fillText(Math.round(total*(1-f)), pad.l-4, y+3);
+      });
+      ctx.fillStyle = textC; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      [0, Math.floor((n-1)/2), n-1].forEach(function(i){
+          if (data[i]) ctx.fillText(data[i].day.slice(5), xp(i), H - 8);
+      });
+      ctx.strokeStyle = idealC; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]);
+      ctx.beginPath();
+      data.forEach(function(d,i){ i===0?ctx.moveTo(xp(i),yp(d.ideal)):ctx.lineTo(xp(i),yp(d.ideal)); });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = actualC; ctx.lineWidth = 2;
+      ctx.beginPath();
+      data.forEach(function(d,i){ i===0?ctx.moveTo(xp(i),yp(d.remaining)):ctx.lineTo(xp(i),yp(d.remaining)); });
+      ctx.stroke();
+      data.forEach(function(d,i){
+          ctx.fillStyle = actualC;
+          ctx.beginPath(); ctx.arc(xp(i), yp(d.remaining), 2.5, 0, 7); ctx.fill();
+      });
+  })();
+  </script>
+  {% endif %}
+
+  {% if heatmap_json != '{}' %}
+  <div class="dash-section">
+    <div class="dash-section-title">Actividad (últimas 52 semanas)</div>
+    <div class="heatmap-wrap"><canvas id="heatmapCanvas" class="heatmap-canvas"></canvas></div>
+  </div>
+  <script>
+  (function(){
+      var raw = {{ heatmap_json|safe }};
+      var canvas = document.getElementById('heatmapCanvas');
+      if (!canvas) return;
+      var COLS = 53, ROWS = 7;
+      var cell = 12, gap = 2;
+      var W = COLS*(cell+gap), H = ROWS*(cell+gap) + 18;
+      canvas.width  = W;
+      canvas.height = H;
+      var ctx = canvas.getContext('2d');
+      var baseC  = '#f1f5f9';
+      var fillC  = {{ proyecto.color|tojson_seguro }};
+      var textC  = '#9ca3af';
+      var maxVal = Math.max.apply(null, Object.values(raw).concat([1]));
+      var today = new Date();
+      var days  = [];
+      for (var i = 364; i >= 0; i--) {
+          var d = new Date(today);
+          d.setDate(d.getDate() - i);
+          days.push(d.toISOString().slice(0, 10));
+      }
+      var firstDow = (new Date(days[0]).getDay() + 6) % 7;
+      var padded   = Array(firstDow).fill(null).concat(days);
+      var months = 'Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic'.split(',');
+      var lastMonth = -1;
+      ctx.fillStyle = textC; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+      for (var ci = 0; ci < COLS; ci++) {
+          var idx = ci * 7;
+          if (idx >= padded.length) break;
+          var dstr = padded[idx];
+          if (!dstr) continue;
+          var mo = new Date(dstr).getMonth();
+          if (mo !== lastMonth) { ctx.fillText(months[mo], ci*(cell+gap), 9); lastMonth = mo; }
+      }
+      var col = 0, row = 0;
+      for (var k = 0; k < padded.length; k++) {
+          var dstr2 = padded[k];
+          var x = col*(cell+gap);
+          var y = 14 + row*(cell+gap);
+          if (dstr2) {
+              var v = raw[dstr2] || 0;
+              if (v === 0) { ctx.fillStyle = baseC; }
+              else { var alpha = 0.25 + 0.75*(v/maxVal); ctx.globalAlpha = alpha; ctx.fillStyle = fillC; }
+              ctx.beginPath();
+              ctx.roundRect ? ctx.roundRect(x, y, cell, cell, 2) : ctx.rect(x, y, cell, cell);
+              ctx.fill();
+              ctx.globalAlpha = 1;
+          }
+          row++;
+          if (row >= ROWS) { row = 0; col++; }
+      }
+  })();
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

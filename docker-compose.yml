@@ -1,0 +1,68 @@
+# Arranque completo:   cp .env.example .env   (y cambia las contraseñas)
+#                      docker compose up -d --build
+# Abre http://localhost:8000 y entra con INSTALAR_ADMIN / INSTALAR_ADMIN_PASSWORD.
+#
+# Base de datos:
+# - Por defecto (COMPOSE_PROFILES=bd-docker en .env) se levanta MariaDB en un
+#   contenedor propio, con sus datos en el volumen "bd".
+# - Para usar un MariaDB que ya tengais: en .env deja COMPOSE_PROFILES vacio
+#   y pon DB_HOST/DB_PORT de ese servidor (y DB_ROOT_* si el usuario de la
+#   app aun no existe o no puede crear bases de datos).
+#
+# El resto de la configuracion de la app (marca, modulos, login...) va en
+# app_fastapi/.env (copia de app_fastapi/.env.example); lo de aqui abajo
+# tiene prioridad sobre ese fichero.
+
+services:
+  db:
+    image: mariadb:11.4
+    profiles: ["bd-docker"]
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?pon DB_ROOT_PASSWORD en .env}
+    volumes:
+      - bd:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    ports:
+      - "${APP_PUERTO:-8000}:8000"
+    env_file:
+      - path: app_fastapi/.env
+        required: false
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-app_tareas}
+      DB_PASSWORD: ${DB_PASSWORD:?pon DB_PASSWORD en .env}
+      DB_NAME: ${DB_NAME:-app_tareas}
+      DB_NAME_TEST: ${DB_NAME_TEST:-app_tareas_test}
+      DB_ROOT_USER: ${DB_ROOT_USER:-root}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
+      INSTALAR_ADMIN: ${INSTALAR_ADMIN:-admin}
+      INSTALAR_ADMIN_PASSWORD: ${INSTALAR_ADMIN_PASSWORD:?pon INSTALAR_ADMIN_PASSWORD en .env}
+      INSTALAR_DEMO: ${INSTALAR_DEMO:-1}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?pon SESSION_SECRET_KEY en .env}
+      MYSQLDUMP_PATH: /usr/bin/mariadb-dump
+    volumes:
+      - datos:/app/data
+      - media:/app/media
+      - logs:/app/app_fastapi/logs
+      - cache:/app/.cache
+
+volumes:
+  bd:
+  datos:
+  media:
+  logs:
+  cache:

@@ -1,0 +1,46 @@
+{# Igual que core/templates/_project_tabs.html -- barra de pestañas comun a
+   todas las paginas de un proyecto. Se incluye con {% include "_project_tabs.html" %}
+   pasando 'proyecto' y 'activo' en el contexto de la pagina que lo use.
+   'show_board_actions' (+ 'hay_filtro_activo', 'sprint', 'proj_sprints') es
+   opcional -- solo lo define tablero.html (via {% set %} antes del include,
+   Jinja propaga el contexto local del include por defecto), para el boton
+   que abre/cierra la barra de filtros del Tablero. #}
+<div class="project-tabs">
+  <a href="/proyecto/{{ proyecto.id }}/" class="project-tab {% if activo == 'resumen' %}active{% endif %}">{{ icon("bar-chart-2", 14) }} Resumen</a>
+  <a href="/proyecto/{{ proyecto.id }}/dashboard/" class="project-tab {% if activo == 'dashboard' %}active{% endif %}">{{ icon("activity", 14) }} Dashboard</a>
+  <a href="/proyecto/{{ proyecto.id }}/tablero/" class="project-tab {% if activo == 'tablero' %}active{% endif %}">{{ icon("layout", 14) }} Tablero</a>
+  {% if proyecto.tipo == 'scrum' %}
+  <a href="/proyecto/{{ proyecto.id }}/backlog/" class="project-tab {% if activo == 'backlog' %}active{% endif %}">{{ icon("list", 14) }} Backlog</a>
+  {% endif %}
+  <a href="/proyecto/{{ proyecto.id }}/gantt/" class="project-tab {% if activo == 'gantt' %}active{% endif %}">{{ icon("calendar", 14) }} Gantt</a>
+  {% if proyecto.tipo == 'scrum' %}
+  <a href="/proyecto/{{ proyecto.id }}/sprints/" class="project-tab {% if activo == 'sprints' %}active{% endif %}">{{ icon("zap", 14) }} Sprints</a>
+  {% endif %}
+  <a href="/proyecto/{{ proyecto.id }}/documentos/" class="project-tab {% if activo == 'documentos' %}active{% endif %}">{{ icon("folder", 14) }} Documentos</a>
+  <a href="/proyecto/{{ proyecto.id }}/wiki/" class="project-tab {% if activo == 'wiki' %}active{% endif %}">{{ icon("book-open", 14) }} Wiki</a>
+  {# Muro: el del espacio filtrado a este proyecto (routers/muro.py) -- un proyecto sin espacio no tiene #}
+  {% if proyecto.espacio_id %}
+  <a href="/proyecto/{{ proyecto.id }}/muro/" class="project-tab {% if activo == 'muro_proyecto' %}active{% endif %}">{{ icon("message-circle", 14) }} Muro</a>
+  {% endif %}
+  {% if show_board_actions %}
+  {# Igual que core/templates/_project_tabs.html: el boton que despliega la
+     barra de filtros del Tablero (y su respaldo "+ Nueva tarea") viven AQUI,
+     fuera de .toolbar, precisamente porque .toolbar entera se oculta al
+     colapsarse -- si el boton viviera dentro, no habria forma de volver a
+     abrirla. Solo se pinta en el Tablero (unica plantilla que fija
+     show_board_actions=true antes de este include). #}
+  <div class="project-tabs-actions">
+    {% if sprint %}
+    <select class="sprint-picker-select sprint-picker-compact" onchange="window.location='/proyecto/{{ proyecto.id }}/tablero/?sprint_id='+this.value" title="Sprint mostrado">
+      {% for s in proj_sprints %}
+      <option value="{{ s.sprint_id }}" {% if s.sprint_id == sprint.sprint_id %}selected{% endif %}>⚡ {{ s.nombre }}{% if s.estado == 'activo' %} · activo{% endif %}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <button type="button" class="toolbar-icon-btn {% if hay_filtro_activo %}is-active{% endif %}" id="toolbarToggleBtn" onclick="toggleBoardToolbar()" title="Mostrar/ocultar filtros">
+      {{ icon("sliders", 14) }}{% if hay_filtro_activo %}<span class="filter-dot"></span>{% endif %}
+    </button>
+    <button type="button" class="btn-primary btn-sm" id="quickAddTaskBtn" onclick="openTaskModal(null)" {% if hay_filtro_activo %}style="display:none"{% endif %}>+ Nueva tarea</button>
+  </div>
+  {% endif %}
+</div>

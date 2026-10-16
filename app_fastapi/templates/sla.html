@@ -1,0 +1,869 @@
+{% extends "_base.html" %}
+{% block title %}SLA Dashboard — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+  input[type=date], select { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; background: #f8fafc; color: var(--ink); font-size: 13px; min-width: 140px; }
+  a.btn-primary, a.btn-secondary { text-decoration: none; display: inline-block; }
+  .text-right { text-align: right !important; }
+
+  .sla-page { flex: 1; overflow-y: auto; padding: 28px 32px; max-width: 1600px; margin: 0 auto; width: 100%; }
+  .sla-page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+  .sla-page-title { font-size: 22px; font-weight: 800; color: var(--ink); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .sla-page-subtitle { font-size: 13px; color: var(--muted); margin: 0; }
+  .sla-export-btn { font-size: 13px; padding: 8px 16px; }
+
+  .sla-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .sla-tab { background: none; border: none; padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
+  .sla-tab:hover { color: var(--ink); }
+  .sla-tab.active { color: var(--selected); border-bottom-color: var(--selected); }
+  .sla-tab-panel[hidden] { display: none; }
+
+  .sla-filters { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
+  .sla-filter-group { display: flex; flex-direction: column; gap: 5px; }
+  .sla-filter-group label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
+  .sla-apply-btn { padding: 8px 18px; font-size: 13px; align-self: flex-end; }
+
+  .sla-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .sla-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; position: relative; overflow: hidden; }
+  .sla-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: #e5e7eb; }
+  .sla-card-blue::before { background: var(--color-blue); }
+  .sla-card-green::before { background: #16a34a; }
+  .sla-card-red::before { background: #dc2626; }
+  .sla-card-purple::before { background: #7c3aed; }
+  .sla-card-indigo::before { background: #4f46e5; }
+  .sla-card-value { font-size: 28px; font-weight: 800; color: var(--ink); line-height: 1; margin-bottom: 6px; }
+  .sla-card-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .sla-card-note { font-size: 10px; color: #9ca3af; margin-top: 3px; }
+
+  .sla-section { margin-bottom: 36px; }
+  .sla-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .sla-section-title { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 12px; }
+  .sla-section-header .sla-section-title { margin: 0; }
+  .sla-count-label { font-size: 12px; color: var(--muted); }
+
+  .sla-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .sla-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .sla-table thead th { background: #f8fafc; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .05em; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  .sla-table tbody tr { border-bottom: 1px solid var(--border); }
+  .sla-table tbody tr:last-child { border-bottom: none; }
+  .sla-table tbody tr:hover { background: #f8fafc; }
+  .sla-row-clickable { cursor: pointer; }
+  .sla-row-clickable:hover { background: var(--bg-alt, #f1f5f9); }
+  .sla-row-selected, .sla-row-selected:hover { background: #dbeafe; }
+  .sla-table td { padding: 9px 14px; vertical-align: middle; color: var(--ink); }
+  .sla-task-title { max-width: 280px; }
+  .sla-task-name { font-weight: 600; }
+  .sla-proj-col { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .sla-cat-col { color: var(--muted); font-size: 12px; }
+  .sla-date-col { font-size: 12px; white-space: nowrap; color: var(--muted); }
+  .sla-empty { color: #d1d5db; }
+  .sla-zero { color: #d1d5db; font-size: 12px; }
+  .sla-num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .sla-row-overdue { background: #fff5f5 !important; }
+  .sla-row-closed { opacity: .85; }
+  .sla-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 20px; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 0 7px; }
+  .sla-badge-blue { background: #eff6ff; color: #1d4ed8; }
+  .sla-badge-green { background: #f0fdf4; color: #166534; }
+  .sla-badge-red { background: #fef2f2; color: #991b1b; }
+  .sla-status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #f3f4f6; color: var(--muted); white-space: nowrap; }
+  .sla-status-dot { font-size: 14px; }
+  .sla-dot-green { color: #16a34a; }
+  .sla-dot-blue { color: #2563eb; }
+  .sla-dot-red { color: #dc2626; }
+  .sla-time-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .sla-time-green { background: #f0fdf4; color: #166534; }
+  .sla-time-amber { background: #fefce8; color: #854d0e; }
+  .sla-time-red { background: #fef2f2; color: #991b1b; }
+  .sla-time-purple { background: #f5f3ff; color: #5b21b6; }
+  .sla-time-val { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .sla-mini-bar-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .sla-mini-bar { width: 72px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .sla-mini-bar-fill { height: 100%; background: #2563eb; border-radius: 3px; }
+  .sla-mini-pct { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
+  .sla-empty-msg p { color: var(--muted); font-size: 14px; padding: 32px; text-align: center; }
+
+  /* Tendencia (grafico de origen Mantis) -- paleta IA/Correo/Manual fija,
+     validada con la skill de dataviz (validate_palette.js): las 3 pasan
+     el check de CVD y contraste sobre fondo blanco (--panel). */
+  :root {
+    --origen-ia: #7c3aed;
+    --origen-correo: #0891b2;
+    --origen-manual: #ea580c;
+  }
+  .sla-tendencia-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .sla-tendencia-vista { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+  .sla-tendencia-vista button { background: none; border: none; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--muted); border-radius: 6px; cursor: pointer; }
+  .sla-tendencia-vista button.active { background: #fff; color: var(--ink); box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.08)); }
+  .sla-chart-wrap { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px 8px; background: #fff; }
+  .sla-chart-legend { display: flex; gap: 18px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+  .sla-chart-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .sla-chart-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .sla-chart-tooltip { position: absolute; pointer-events: none; background: #1f2937; color: #fff; font-size: 12px; padding: 6px 10px; border-radius: 6px; line-height: 1.5; box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.18)); white-space: nowrap; z-index: 5; opacity: 0; transition: opacity .1s; }
+  /* overflow:hidden es la red de seguridad real: el tooltip es position:
+     absolute dentro de este wrapper -- sin esto, un left calculado cerca
+     del borde derecho (ver _hoverTendenciaMantisOrigen) desborda la caja y
+     agranda el scroll de TODA la pagina (no solo del grafico), aunque el
+     tooltip este con opacity:0 en reposo. El clamp en JS de mas abajo evita
+     que además se vea recortado visualmente al desbordar. */
+  .sla-chart-svg-wrap { position: relative; overflow: hidden; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sla-page">
+  <div class="sla-page-header">
+    <div>
+      <h1 class="sla-page-title">{{ icon("trending-up", 20) }} SLA Dashboard</h1>
+      <p class="sla-page-subtitle">Lead time y cycle time reales, en horas laborables (festivos y fines de semana excluidos).</p>
+    </div>
+    <a href="/sla/exportar/?date_from={{ date_from }}&date_to={{ date_to }}&project_id={{ proj_id }}&category={{ cat_filter }}" class="btn-primary sla-export-btn">⬇ Exportar CSV</a>
+  </div>
+
+  {% if mantis_destino_actual %}
+  <div class="sla-tabs">
+    <button type="button" class="sla-tab active" data-tab="general" onclick="slaShowTab('general')">General</button>
+    <button type="button" class="sla-tab" data-tab="mantis" onclick="slaShowTab('mantis')">Mantis</button>
+  </div>
+  {% endif %}
+
+  <div id="slaTabGeneral" class="sla-tab-panel">
+
+    <form method="get" action="/sla/" class="sla-filters">
+      <div class="sla-filter-group"><label>DESDE</label><input type="date" name="date_from" value="{{ date_from }}"></div>
+      <div class="sla-filter-group"><label>HASTA</label><input type="date" name="date_to" value="{{ date_to }}"></div>
+      <div class="sla-filter-group"><label>PROYECTO</label>
+        <select name="project_id">
+          <option value="">Todos los proyectos</option>
+          {% for p in filter_projects %}<option value="{{ p.id }}" {% if p.id == proj_id %}selected{% endif %}>{{ p.nombre }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="sla-filter-group"><label>CATEGORÍA</label>
+        <select name="category">
+          <option value="">Todas las categorías</option>
+          {% for cat in all_cats %}<option value="{{ cat }}" {% if cat == cat_filter %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn-primary sla-apply-btn">Aplicar</button>
+      <a href="/sla/" class="btn-secondary sla-apply-btn">Limpiar</a>
+    </form>
+
+    <div class="sla-cards">
+      <div class="sla-card"><div class="sla-card-value">{{ total }}</div><div class="sla-card-label">Tareas totales</div></div>
+      <div class="sla-card sla-card-blue"><div class="sla-card-value">{{ n_open }}</div><div class="sla-card-label">Abiertas</div></div>
+      <div class="sla-card sla-card-green"><div class="sla-card-value">{{ n_closed }}</div><div class="sla-card-label">Cerradas</div></div>
+      <div class="sla-card {% if n_overdue %}sla-card-red{% endif %}"><div class="sla-card-value">{{ n_overdue }}</div><div class="sla-card-label">Vencidas</div></div>
+      <div class="sla-card sla-card-purple">
+        <div class="sla-card-value">{{ avg_lead }}</div><div class="sla-card-label">Lead time medio</div>
+        <div class="sla-card-note">Tareas cerradas · horas laborables</div>
+      </div>
+      <div class="sla-card sla-card-indigo">
+        <div class="sla-card-value">{{ avg_cycle }}</div><div class="sla-card-label">Cycle time medio</div>
+        <div class="sla-card-note">Desde que se inició · horas laborables</div>
+      </div>
+    </div>
+
+    {% if proj_rows %}
+    <div class="sla-section">
+      <h2 class="sla-section-title">Resumen por proyecto</h2>
+      <div class="sla-table-wrap">
+        <table class="sla-table">
+          <thead><tr>
+            <th>Proyecto</th><th class="text-right">Total</th><th class="text-right">Abiertas</th>
+            <th class="text-right">Cerradas</th><th class="text-right">Vencidas</th>
+            <th class="text-right">Lead time medio</th><th class="text-right">% completado</th>
+          </tr></thead>
+          <tbody>
+            {% for r in proj_rows %}
+            <tr>
+              <td class="sla-proj-name" style="font-weight:600">{{ r.nombre }}</td>
+              <td class="text-right sla-num">{{ r.total }}</td>
+              <td class="text-right">{% if r.open %}<span class="sla-badge sla-badge-blue">{{ r.open }}</span>{% else %}<span class="sla-zero">0</span>{% endif %}</td>
+              <td class="text-right">{% if r.done %}<span class="sla-badge sla-badge-green">{{ r.done }}</span>{% else %}<span class="sla-zero">0</span>{% endif %}</td>
+              <td class="text-right">{% if r.overdue %}<span class="sla-badge sla-badge-red">{{ r.overdue }}</span>{% else %}<span class="sla-zero">0</span>{% endif %}</td>
+              <td class="text-right sla-time-val">{{ r.avg_lead }}</td>
+              <td class="text-right">
+                {% if r.total %}
+                <div class="sla-mini-bar-wrap">
+                  <div class="sla-mini-bar"><div class="sla-mini-bar-fill" style="width:{{ r.pct }}%"></div></div>
+                  <span class="sla-mini-pct">{{ r.pct }}%</span>
+                </div>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="sla-section">
+      <div class="sla-section-header">
+        <h2 class="sla-section-title">Detalle por tarea</h2>
+        <span class="sla-count-label">{{ task_rows|length }} tarea{% if task_rows|length != 1 %}s{% endif %}</span>
+      </div>
+      {% if task_rows %}
+      <div class="sla-table-wrap">
+        <table class="sla-table sla-table-detail">
+          <thead><tr>
+            <th>Tarea</th><th>Proyecto</th><th>Categoría</th><th>Columna</th><th>Creada</th>
+            <th>Iniciada</th><th>Cerrada</th><th class="text-right">Lead time</th><th class="text-right">Cycle time</th><th>Estado</th>
+          </tr></thead>
+          <tbody>
+            {% for r in task_rows %}
+            <tr class="{% if r.is_overdue %}sla-row-overdue{% elif r.is_closed %}sla-row-closed{% endif %}">
+              <td class="sla-task-title"><span class="sla-task-name" title="{{ r.task.title }}">{{ r.task.title|truncate(40) }}</span></td>
+              <td class="sla-proj-col">{{ r.proj_nombre|truncate(20) }}</td>
+              <td class="sla-cat-col">{{ r.task.category|truncate(20) }}</td>
+              <td><span class="sla-status-pill">{{ r.task.status }}</span></td>
+              <td class="sla-date-col">{{ r.created }}</td>
+              <td class="sla-date-col {% if not r.task.started_at %}sla-empty{% endif %}">{{ r.started }}</td>
+              <td class="sla-date-col {% if not r.task.closed_at %}sla-empty{% endif %}">{{ r.closed }}</td>
+              <td class="text-right">
+                <span class="sla-time-tag {% if r.is_closed %}sla-time-green{% elif r.is_overdue %}sla-time-red{% else %}sla-time-amber{% endif %}">{{ r.lead_fmt }}</span>
+              </td>
+              <td class="text-right">
+                {% if r.cycle_h is not none %}<span class="sla-time-tag sla-time-purple">{{ r.cycle_fmt }}</span>{% else %}<span class="sla-zero">—</span>{% endif %}
+              </td>
+              <td>
+                {% if r.is_overdue %}<span class="sla-status-dot sla-dot-red" title="Vencida">⚠</span>
+                {% elif r.is_closed %}<span class="sla-status-dot sla-dot-green" title="Cerrada">✓</span>
+                {% else %}<span class="sla-status-dot sla-dot-blue" title="Abierta">●</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="sla-empty-msg"><p>Sin tareas en este rango.</p></div>
+      {% endif %}
+    </div>
+
+  </div><!-- /slaTabGeneral -->
+
+  {% if mantis_destino_actual %}
+  <div id="slaTabMantis" class="sla-tab-panel" hidden>
+    <div class="sla-section">
+      <h2 class="sla-section-title">SLA Mantis — asignadas a mí</h2>
+      <div id="mantisSlaBlock"><p style="color:var(--muted);font-size:13px;">Cargando…</p></div>
+    </div>
+    <div class="sla-section">
+      <div class="sla-section-header">
+        <h2 class="sla-section-title">Histórico de resueltas (Mantis)</h2>
+        <button type="button" class="btn-secondary btn-sm" id="mantisSyncBtn" onclick="sincronizarMantisHistorico()">Sincronizar histórico</button>
+      </div>
+      <div id="mantisHistoricoBlock"><p style="color:var(--muted);font-size:13px;">Aún no se ha sincronizado nada.</p></div>
+    </div>
+
+    {% if mantis_empresas_con_mapeo %}
+    <div class="sla-section">
+      <div class="sla-section-header">
+        <h2 class="sla-section-title">Desglose de origen (IA / Correo / Manual)</h2>
+      </div>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Cubre TODO el equipo (no solo lo asignado a mí), agrupado por empresa y por técnico. Clasificar cada incidencia cuesta una llamada extra a Mantis, así que solo se calcula al pulsar el botón.</p>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
+        <div class="sla-filter-group"><label>DESDE</label><input type="date" id="mantisOrigenDesde"></div>
+        <div class="sla-filter-group"><label>HASTA</label><input type="date" id="mantisOrigenHasta"></div>
+        <button type="button" class="btn-secondary btn-sm" id="mantisOrigenTodasBtn" onclick="toggleMantisOrigenTodas()" title="OFF: pool sin triar + empresas con proyecto de Mantis asociado. ON: tambien el resto de proyectos de Mantis">Todas las empresas: OFF</button>
+        <button type="button" class="btn-primary btn-sm" id="mantisOrigenBtn" onclick="calcularMantisOrigen()">Calcular desglose</button>
+        <button type="button" class="btn-secondary btn-sm" id="mantisOrigenExportBtn" onclick="exportarMantisOrigenExcel()" title="Exportar las 3 tablas (respetando el filtro activo) a un Excel de 3 hojas">Exportar Excel</button>
+        <button type="button" class="btn-secondary btn-sm" onclick="limpiarCacheMantisOrigen()" title="Borrar el desglose guardado en este navegador -- no se vuelve a mostrar nada hasta pulsar Calcular desglose">Limpiar caché</button>
+      </div>
+      <div id="mantisTendenciaBlock" hidden>
+        <div class="sla-tendencia-head">
+          <h3 style="font-size:13px;margin:0;">Tendencia</h3>
+          <div class="sla-tendencia-vista" id="mantisTendenciaVista">
+            <button type="button" data-vista="dia" class="active" onclick="cambiarVistaTendenciaMantisOrigen('dia')">Día</button>
+            <button type="button" data-vista="mes" onclick="cambiarVistaTendenciaMantisOrigen('mes')">Mes</button>
+            <button type="button" data-vista="tecnico" onclick="cambiarVistaTendenciaMantisOrigen('tecnico')">Técnico</button>
+            <button type="button" data-vista="categoria" onclick="cambiarVistaTendenciaMantisOrigen('categoria')">Categoría</button>
+          </div>
+        </div>
+        <div class="sla-chart-svg-wrap" id="mantisTendenciaChart"></div>
+        <div class="sla-chart-legend">
+          <span class="sla-chart-legend-item"><span class="sla-chart-legend-dot" style="background:var(--origen-ia)"></span>IA</span>
+          <span class="sla-chart-legend-item"><span class="sla-chart-legend-dot" style="background:var(--origen-correo)"></span>Correo</span>
+          <span class="sla-chart-legend-item"><span class="sla-chart-legend-dot" style="background:var(--origen-manual)"></span>Manual</span>
+        </div>
+      </div>
+      <div id="mantisOrigenBlock"><p style="color:var(--muted);font-size:13px;">Elige un rango de fechas y pulsa "Calcular desglose".</p></div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if mantis_destino_actual %}
+<script>
+var _slaMantisCargado = false;
+function slaShowTab(name) {
+  document.querySelectorAll('.sla-tab-panel').forEach(function(p) { p.hidden = (p.id !== 'slaTab' + name.charAt(0).toUpperCase() + name.slice(1)); });
+  document.querySelectorAll('.sla-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.tab === name); });
+  if (name === 'mantis' && !_slaMantisCargado) {
+    _slaMantisCargado = true;
+    loadMantisSla();
+    // por defecto, ultimos 7 dias -- el usuario puede cambiarlo antes de calcular
+    var origenDesde = document.getElementById('mantisOrigenDesde');
+    var origenHasta = document.getElementById('mantisOrigenHasta');
+    if (origenDesde && origenHasta) {
+      var hoy = new Date();
+      var hace7 = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000);
+      origenHasta.value = hoy.toISOString().slice(0, 10);
+      origenDesde.value = hace7.toISOString().slice(0, 10);
+    }
+    _restaurarMantisOrigenGuardado();
+  }
+}
+
+// Persistencia SOLO de este bloque (desglose de origen Mantis, dentro de
+// SLA) -- el calculo es pesado (llamadas reales a Mantis), asi que un F5
+// de la pagina no debe perderlo. Se guarda en localStorage (no cookies:
+// viajarian en cada peticion HTTP y su limite de ~4KB se queda corto para
+// este volumen de datos) y solo se sustituye cuando se pulsa "Calcular
+// desglose" (o el toggle "Todas las empresas") de verdad -- pedido
+// explicito del usuario. La pagina /mantis/ en si NO lleva este cacheo,
+// tiene que cargar siempre en vivo.
+// _v2: lo guardado con la clave anterior se calculo con el bug del "rango
+// cubierto hoy" (ver README, 2026-09-29) -- se descarta y se borra.
+var MANTIS_ORIGEN_STORAGE_KEY = 'mantisOrigenDesglose_v2';
+try { localStorage.removeItem('mantisOrigenDesglose'); } catch (e) { /* sin storage: nada que borrar */ }
+
+function _restaurarMantisOrigenGuardado() {
+  var guardado;
+  try {
+    guardado = JSON.parse(localStorage.getItem(MANTIS_ORIGEN_STORAGE_KEY) || 'null');
+  } catch (e) { guardado = null; }
+  if (!guardado || !guardado.detalle || !guardado.detalle.length) return;
+  _mantisOrigenDetalle = guardado.detalle;
+  _mantisOrigenFiltros = [];
+  var origenDesde = document.getElementById('mantisOrigenDesde');
+  var origenHasta = document.getElementById('mantisOrigenHasta');
+  if (origenDesde && guardado.desde) origenDesde.value = guardado.desde;
+  if (origenHasta && guardado.hasta) origenHasta.value = guardado.hasta;
+  _mantisOrigenTodas = !!guardado.todas;
+  var toggleBtn = document.getElementById('mantisOrigenTodasBtn');
+  if (toggleBtn) {
+    toggleBtn.textContent = 'Todas las empresas: ' + (_mantisOrigenTodas ? 'ON' : 'OFF');
+    toggleBtn.classList.toggle('btn-primary', _mantisOrigenTodas);
+    toggleBtn.classList.toggle('btn-secondary', !_mantisOrigenTodas);
+  }
+  _renderMantisOrigenTablas();
+}
+
+function _guardarMantisOrigen(desde, hasta) {
+  try {
+    localStorage.setItem(MANTIS_ORIGEN_STORAGE_KEY, JSON.stringify({
+      detalle: _mantisOrigenDetalle, desde: desde, hasta: hasta, todas: _mantisOrigenTodas,
+    }));
+  } catch (e) { /* cuota llena o navegacion privada -- no debe romper la pagina */ }
+}
+
+function _esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function _ageClass(horas, umbralAmbar, umbralRojo) {
+  if (horas == null) return 'sla-time-amber';
+  if (horas >= umbralRojo) return 'sla-time-red';
+  if (horas >= umbralAmbar) return 'sla-time-amber';
+  return 'sla-time-green';
+}
+
+function _renderHistorico(historico) {
+  var box = document.getElementById('mantisHistoricoBlock');
+  if (!historico || !historico.total) {
+    box.innerHTML = '<p style="color:var(--muted);font-size:13px;">Aún no se ha sincronizado nada.</p>';
+    return;
+  }
+  var html = '<div class="sla-cards" style="margin-bottom:16px;">' +
+    '<div class="sla-card sla-card-green"><div class="sla-card-value">' + historico.total + '</div><div class="sla-card-label">Resueltas (histórico)</div></div>' +
+    '<div class="sla-card sla-card-indigo"><div class="sla-card-value">' + _esc(historico.avg_resolucion_fmt) + '</div><div class="sla-card-label">Tiempo medio de resolución</div></div>' +
+    '</div>';
+  if (historico.por_proyecto.length) {
+    html += '<div class="sla-table-wrap"><table class="sla-table"><thead><tr><th>Proyecto</th><th class="text-right">Resueltas</th><th class="text-right">Tiempo medio</th></tr></thead><tbody>';
+    historico.por_proyecto.forEach(function(p) {
+      html += '<tr><td class="sla-proj-name">' + _esc(p.proyecto) + '</td><td class="text-right sla-num">' + p.total + '</td><td class="text-right sla-time-val">' + _esc(p.avg_resolucion_fmt) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  if (historico.ultimo_sync) {
+    html += '<p style="color:var(--muted);font-size:11px;margin-top:8px;">Última sincronización: ' + _esc(historico.ultimo_sync) + '</p>';
+  }
+  box.innerHTML = html;
+}
+
+function sincronizarMantisHistorico() {
+  var btn = document.getElementById('mantisSyncBtn');
+  btn.disabled = true;
+  var original = btn.textContent;
+  btn.textContent = 'Sincronizando…';
+  fetch('/sla/mantis/sincronizar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') } })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      btn.disabled = false; btn.textContent = original;
+      if (!d.ok) { alert(d.error); return; }
+      loadMantisSla();
+    })
+    .catch(function() { btn.disabled = false; btn.textContent = original; });
+}
+
+function loadMantisSla() {
+  var box = document.getElementById('mantisSlaBlock');
+  fetch('/sla/mantis/json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) { box.innerHTML = '<p style="color:#b91c1c;font-size:13px;">Error: ' + _esc(data.error) + '</p>'; return; }
+      _renderHistorico(data.historico);
+      if (!data.total) { box.innerHTML = '<p style="color:var(--muted);font-size:13px;">No tienes incidencias abiertas asignadas.</p>'; return; }
+      var html = '<div class="sla-cards" style="margin-bottom:16px;">' +
+        '<div class="sla-card sla-card-blue"><div class="sla-card-value">' + data.total + '</div><div class="sla-card-label">Abiertas (mías)</div></div>' +
+        '<div class="sla-card sla-card-purple"><div class="sla-card-value">' + _esc(data.avg_open_fmt) + '</div><div class="sla-card-label">Tiempo medio abierto</div></div>' +
+        '</div>';
+      if (data.por_proyecto.length) {
+        html += '<div class="sla-table-wrap"><table class="sla-table"><thead><tr><th>Proyecto</th><th class="text-right">Total</th><th class="text-right">Tiempo medio abierto</th></tr></thead><tbody>';
+        data.por_proyecto.forEach(function(p) {
+          html += '<tr><td class="sla-proj-name">' + _esc(p.proyecto) + '</td><td class="text-right sla-num">' + p.total + '</td><td class="text-right sla-time-val">' + _esc(p.avg_open_fmt) + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+      html += '<div class="sla-table-wrap" style="margin-top:10px;"><table class="sla-table sla-table-detail"><thead><tr><th>Proyecto</th><th>Tarea</th><th>Estado</th><th class="text-right">Lead time</th></tr></thead><tbody>';
+      data.incidencias.forEach(function(inc) {
+        html += '<tr><td class="sla-proj-col">' + _esc(inc.proyecto) + '</td>' +
+          '<td class="sla-task-title"><a href="' + _esc(inc.url) + '" target="_blank" rel="noopener" title="' + _esc(inc.resumen) + '">#' + inc.id + ' ' + _esc(inc.resumen) + '</a></td>' +
+          '<td><span class="sla-status-pill">' + _esc(inc.estado) + '</span></td>' +
+          '<td class="text-right"><span class="sla-time-tag ' + _ageClass(inc.open_h, data.umbral_ambar_h, data.umbral_rojo_h) + '">' + _esc(inc.open_fmt) + '</span></td></tr>';
+      });
+      html += '</tbody></table></div>';
+      box.innerHTML = html;
+    })
+    .catch(function() { box.innerHTML = '<p style="color:#b91c1c;font-size:13px;">Error al cargar los datos de Mantis.</p>'; });
+}
+
+// ── desglose de origen: 3 tablas (empresa/técnico/categoría) que se cruzan
+// entre si estilo Power BI -- un clic en una fila filtra las OTRAS 2 tablas,
+// pero SIEMPRE recalculando en el navegador a partir de '_mantisOrigenDetalle'
+// (la lista de incidencias YA clasificadas que devolvio el servidor en el
+// ultimo calculo), nunca volviendo a pedir nada a Mantis ni al servidor --
+// pedido explicito del usuario ("ojo no recalcularlo de raiz si no de la
+// cache de datos"). Solo pulsar "Calcular desglose" (o el toggle de "todas
+// las empresas") vuelve a llamar al servidor.
+var _mantisOrigenDetalle = [];
+// [{dim: 'empresa'|'tecnico'|'categoria', valor: '...'}, ...] -- multiseleccion
+// (Ctrl/Cmd+clic añade sin perder lo anterior, ver seleccionarFiltroMantisOrigen).
+var _mantisOrigenFiltros = [];
+
+function _aggDimension(detalle, dim) {
+  var mapa = {}, orden = [];
+  detalle.forEach(function(d) {
+    var k = d[dim];
+    if (!(k in mapa)) { mapa[k] = { ia: 0, correo: 0, manual: 0 }; orden.push(k); }
+    mapa[k][d.origen]++;
+  });
+  var total = { ia: 0, correo: 0, manual: 0 };
+  var filas = orden.map(function(k) {
+    var c = mapa[k];
+    total.ia += c.ia; total.correo += c.correo; total.manual += c.manual;
+    return { clave: k, ia: c.ia, correo: c.correo, manual: c.manual, total: c.ia + c.correo + c.manual };
+  });
+  if (dim !== 'empresa') filas.sort(function(a, b) { return b.total - a.total; });
+  filas.push({ clave: 'Total', ia: total.ia, correo: total.correo, manual: total.manual, total: total.ia + total.correo + total.manual });
+  return filas;
+}
+
+// ── Tendencia: mismo detalle, agregado por fecha en vez de por dimension ──
+// (dia o mes) -- para el grafico de lineas. Nunca pide nada al servidor,
+// solo reagrupa lo que ya hay en _mantisOrigenDetalle.
+function _aggPorFecha(detalle, bucket) {
+  var mapa = {};
+  detalle.forEach(function(d) {
+    var k = bucket === 'mes' ? (d.fecha || '').slice(0, 7) : d.fecha;
+    if (!k) return;
+    if (!(k in mapa)) mapa[k] = { ia: 0, correo: 0, manual: 0 };
+    mapa[k][d.origen]++;
+  });
+  return Object.keys(mapa).sort().map(function(k) {
+    var c = mapa[k];
+    return { clave: k, ia: c.ia, correo: c.correo, manual: c.manual, total: c.ia + c.correo + c.manual };
+  });
+}
+
+// Interpolacion Hermite monotona (mismo criterio que d3.curveMonotoneX) --
+// a diferencia de una curva Catmull-Rom normal, esta NUNCA se pasa por
+// encima/debajo de los valores vecinos. Imprescindible aqui: son recuentos
+// de incidencias, una curva "bonita" no puede dibujar un rebote que parezca
+// un valor negativo entre dos puntos bajos.
+function _monotonePath(pts) {
+  var n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return 'M' + pts[0][0] + ',' + pts[0][1];
+  var xs = pts.map(function(p) { return p[0]; });
+  var ys = pts.map(function(p) { return p[1]; });
+  var d = [], i;
+  for (i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  var m = new Array(n);
+  m[0] = d[0];
+  m[n - 1] = d[n - 2];
+  for (i = 1; i < n - 1; i++) {
+    m[i] = (d[i - 1] === 0 || d[i] === 0 || (d[i - 1] > 0) !== (d[i] > 0)) ? 0 : (d[i - 1] + d[i]) / 2;
+  }
+  for (i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    var a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { var t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  var path = 'M' + xs[0] + ',' + ys[0];
+  for (i = 0; i < n - 1; i++) {
+    var dx = (xs[i + 1] - xs[i]) / 3;
+    var c1x = xs[i] + dx, c1y = ys[i] + m[i] * dx;
+    var c2x = xs[i + 1] - dx, c2y = ys[i + 1] - m[i + 1] * dx;
+    path += ' C' + c1x + ',' + c1y + ' ' + c2x + ',' + c2y + ' ' + xs[i + 1] + ',' + ys[i + 1];
+  }
+  return path;
+}
+
+// paso ENTERO "redondo" (1/2/5 x 10^n) para ~4 divisiones -- son recuentos,
+// una division de 0,5 se pintaba redondeada y repetia etiquetas (2,2,1,1,0).
+function _chartTickStep(maxY) {
+  var raw = Math.max(1, maxY / 4);
+  var p = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+  var step = [1, 2, 5, 10].map(function(m) { return m * p; }).filter(function(v) { return v >= raw; })[0];
+  return Math.max(1, Math.round(step));
+}
+
+function _chartYMax(filas, keys) {
+  var maxY = 1;
+  filas.forEach(function(f) { keys.forEach(function(k) { maxY = Math.max(maxY, f[k]); }); });
+  var step = _chartTickStep(maxY);
+  return Math.ceil(maxY / step) * step;
+}
+
+function _chartGridAndAxis(W, H, padL, padR, padT, innerW, innerH, yMax) {
+  var gridN = Math.round(yMax / _chartTickStep(yMax)), svg = '';
+  for (var g = 0; g <= gridN; g++) {
+    var gy = padT + (innerH * g) / gridN;
+    var val = Math.round(yMax - (yMax * g) / gridN);
+    svg += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" stroke="var(--border)" stroke-width="1"/>';
+    svg += '<text x="' + (padL - 8) + '" y="' + (gy + 4) + '" text-anchor="end" font-size="10" fill="var(--muted)">' + val + '</text>';
+  }
+  return svg;
+}
+
+var ORIGEN_COLORES = { ia: 'var(--origen-ia)', correo: 'var(--origen-correo)', manual: 'var(--origen-manual)' };
+
+function _renderLineChart(container, filas) {
+  if (!filas.length) { container.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:32px;text-align:center;">Sin datos para este rango.</p>'; return; }
+  var W = 760, H = 220, padL = 36, padR = 12, padT = 14, padB = 26;
+  var innerW = W - padL - padR, innerH = H - padT - padB;
+  var n = filas.length;
+  var yMax = _chartYMax(filas, ['ia', 'correo', 'manual']);
+
+  function x(i) { return n === 1 ? padL + innerW / 2 : padL + (innerW * i) / (n - 1); }
+  function y(v) { return padT + innerH - (innerH * v) / yMax; }
+
+  var svg = _chartGridAndAxis(W, H, padL, padR, padT, innerW, innerH, yMax);
+  var paths = '', markers = '';
+  ['ia', 'correo', 'manual'].forEach(function(key) {
+    var pts = filas.map(function(f, i) { return [x(i), y(f[key])]; });
+    paths += '<path d="' + _monotonePath(pts) + '" fill="none" stroke="' + ORIGEN_COLORES[key] + '" stroke-width="2"/>';
+    pts.forEach(function(p) { markers += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.5" fill="' + ORIGEN_COLORES[key] + '"/>'; });
+  });
+
+  var everyN = Math.max(1, Math.ceil(n / 8)), xLabels = '', hoverAreas = '';
+  var bandW = n === 1 ? innerW : innerW / n;
+  filas.forEach(function(f, i) {
+    if (i % everyN === 0 || i === n - 1) {
+      xLabels += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' + _esc(f.clave) + '</text>';
+    }
+    var bx = n === 1 ? padL : padL + bandW * i;
+    hoverAreas += '<rect x="' + bx + '" y="' + padT + '" width="' + bandW + '" height="' + innerH + '" fill="transparent" ' +
+      'onmouseenter="_hoverTendenciaMantisOrigen(' + i + ',' + x(i) + ')" onmouseleave="_hoverTendenciaMantisOrigenFin()"/>';
+  });
+
+  window._mtChartFilas = filas;
+  container.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="220" style="display:block;">' +
+    svg + paths + markers + xLabels + hoverAreas +
+    '<line id="mtCrosshair" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + innerH) + '" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3" opacity="0" pointer-events="none"/>' +
+    '</svg><div class="sla-chart-tooltip" id="mtTooltip"></div>';
+}
+
+function _renderBarChart(container, filas) {
+  if (!filas.length) { container.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:32px;text-align:center;">Sin datos para este rango.</p>'; return; }
+  // padL mas ancho que en el grafico de lineas: las etiquetas van giradas y
+  // ancladas por el final (text-anchor="end"), asi que la primera barra
+  // necesita hueco a su izquierda para que la etiqueta no se salga del SVG.
+  var W = 760, H = 220, padL = 60, padR = 12, padT = 14, padB = 40;
+  var innerW = W - padL - padR, innerH = H - padT - padB;
+  var n = filas.length;
+  var yMax = _chartYMax(filas, ['total']);
+  var svg = _chartGridAndAxis(W, H, padL, padR, padT, innerW, innerH, yMax);
+
+  var slot = innerW / n, barW = Math.max(10, Math.min(44, slot * 0.55));
+  var bars = '', xLabels = '', hoverAreas = '';
+  filas.forEach(function(f, i) {
+    var cx = padL + slot * i + slot / 2, yBase = padT + innerH;
+    ['ia', 'correo', 'manual'].forEach(function(key) {
+      var h = (innerH * f[key]) / yMax;
+      if (h <= 0) return;
+      yBase -= h;
+      bars += '<rect x="' + (cx - barW / 2) + '" y="' + yBase + '" width="' + barW + '" height="' + h + '" fill="' + ORIGEN_COLORES[key] + '"/>';
+    });
+    var etiqueta = f.clave.length > 10 ? f.clave.slice(0, 9) + '…' : f.clave;
+    xLabels += '<text x="' + cx + '" y="' + (H - 24) + '" text-anchor="end" font-size="10" fill="var(--muted)" transform="rotate(-35 ' + cx + ',' + (H - 24) + ')">' + _esc(etiqueta) + '</text>';
+    hoverAreas += '<rect x="' + (cx - slot / 2) + '" y="' + padT + '" width="' + slot + '" height="' + innerH + '" fill="transparent" ' +
+      'onmouseenter="_hoverTendenciaMantisOrigen(' + i + ',' + cx + ')" onmouseleave="_hoverTendenciaMantisOrigenFin()"/>';
+  });
+
+  window._mtChartFilas = filas;
+  container.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="220" style="display:block;overflow:visible;">' +
+    svg + bars + xLabels + hoverAreas + '</svg><div class="sla-chart-tooltip" id="mtTooltip"></div>';
+}
+
+function _hoverTendenciaMantisOrigen(i, px) {
+  var f = window._mtChartFilas && window._mtChartFilas[i];
+  if (!f) return;
+  var crosshair = document.getElementById('mtCrosshair');
+  if (crosshair) { crosshair.setAttribute('x1', px); crosshair.setAttribute('x2', px); crosshair.setAttribute('opacity', '1'); }
+  var tip = document.getElementById('mtTooltip');
+  var wrap = document.getElementById('mantisTendenciaChart');
+  if (!tip || !wrap) return;
+  tip.innerHTML = '<strong>' + _esc(f.clave) + '</strong><br>IA: ' + f.ia + ' · Correo: ' + f.correo + ' · Manual: ' + f.manual + '<br>Total: ' + f.total;
+  tip.style.opacity = '1';
+  var pct = px / 760;
+  // Clamp para que el tooltip nunca sobresalga del wrapper (ver el
+  // overflow:hidden de .sla-chart-svg-wrap, que ya lo evitaria a nivel
+  // visual/scroll de pagina, pero sin esto se veria recortado a la mitad
+  // cerca de los extremos en vez de simplemente desplazarse).
+  var left = pct * wrap.clientWidth;
+  left = Math.min(left, wrap.clientWidth - tip.offsetWidth);
+  left = Math.max(left, 0);
+  tip.style.left = left + 'px';
+  tip.style.top = '2px';
+}
+
+function _hoverTendenciaMantisOrigenFin() {
+  var crosshair = document.getElementById('mtCrosshair');
+  if (crosshair) crosshair.setAttribute('opacity', '0');
+  var tip = document.getElementById('mtTooltip');
+  if (tip) tip.style.opacity = '0';
+}
+
+var _mantisTendenciaVista = 'dia';
+function cambiarVistaTendenciaMantisOrigen(vista) {
+  _mantisTendenciaVista = vista;
+  document.querySelectorAll('#mantisTendenciaVista button').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.vista === vista);
+  });
+  _renderMantisTendencia();
+}
+
+function _renderMantisTendencia() {
+  var wrap = document.getElementById('mantisTendenciaBlock');
+  if (!_mantisOrigenDetalle.length) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  var chartBox = document.getElementById('mantisTendenciaChart');
+  var detalleFiltrado = _mantisOrigenDetalle.filter(function(d) { return _pasaFiltros(d, _mantisOrigenFiltros); });
+  if (_mantisTendenciaVista === 'dia') {
+    _renderLineChart(chartBox, _aggPorFecha(detalleFiltrado, 'dia'));
+  } else if (_mantisTendenciaVista === 'mes') {
+    _renderLineChart(chartBox, _aggPorFecha(detalleFiltrado, 'mes'));
+  } else if (_mantisTendenciaVista === 'tecnico') {
+    _renderBarChart(chartBox, _aggDimension(detalleFiltrado, 'tecnico').filter(function(f) { return f.clave !== 'Total'; }));
+  } else {
+    _renderBarChart(chartBox, _aggDimension(detalleFiltrado, 'categoria').filter(function(f) { return f.clave !== 'Total'; }));
+  }
+}
+
+function _renderTablaOrigen(primeraColLabel, filas, dim) {
+  var seleccionadas = _mantisOrigenFiltros.filter(function(x) { return x.dim === dim; }).map(function(x) { return x.valor; });
+  var html = '<div class="sla-table-wrap"><table class="sla-table"><thead><tr>' +
+    '<th>' + _esc(primeraColLabel) + '</th>' +
+    '<th class="text-right">IA</th><th class="text-right">Correo</th>' +
+    '<th class="text-right">Manual</th><th class="text-right">Total</th>' +
+    '</tr></thead><tbody>';
+  filas.forEach(function(f) {
+    var esTotal = f.clave === 'Total';
+    var seleccionada = !esTotal && seleccionadas.indexOf(f.clave) !== -1;
+    var claseFila = esTotal ? '' : 'sla-row-clickable' + (seleccionada ? ' sla-row-selected' : '');
+    var onclick = esTotal ? '' : ' onclick="seleccionarFiltroMantisOrigen(\'' + dim + '\',' + _esc(JSON.stringify(f.clave)) + ',event)"';
+    html += '<tr class="' + claseFila + '"' + onclick + (esTotal ? ' style="font-weight:700;border-top:2px solid var(--border);"' : '') +
+      (esTotal ? '' : ' title="Clic: filtrar solo por esto. Ctrl+clic: sumar a la seleccion."') + '>' +
+      '<td class="sla-proj-name">' + _esc(f.clave) + '</td>' +
+      '<td class="text-right sla-num">' + f.ia + '</td>' +
+      '<td class="text-right sla-num">' + f.correo + '</td>' +
+      '<td class="text-right sla-num">' + f.manual + '</td>' +
+      '<td class="text-right sla-num">' + f.total + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// clic normal: sustituye la seleccion completa por esta unica fila (o la
+// quita si era la unica ya activa). Ctrl/Cmd+clic: pedido explicito del
+// usuario, estilo Power BI -- suma/quita ESTE valor a lo ya seleccionado sin
+// perder el resto, incluso de otras tablas (varios valores del MISMO campo
+// se combinan con OR, campos DISTINTOS se combinan con AND, ver _pasaFiltros).
+function seleccionarFiltroMantisOrigen(dim, valor, event) {
+  var ctrl = !!(event && (event.ctrlKey || event.metaKey));
+  var idx = _mantisOrigenFiltros.findIndex(function(x) { return x.dim === dim && x.valor === valor; });
+  if (ctrl) {
+    if (idx !== -1) _mantisOrigenFiltros.splice(idx, 1);
+    else _mantisOrigenFiltros.push({ dim: dim, valor: valor });
+  } else if (idx !== -1 && _mantisOrigenFiltros.length === 1) {
+    _mantisOrigenFiltros = [];
+  } else {
+    _mantisOrigenFiltros = [{ dim: dim, valor: valor }];
+  }
+  _renderMantisOrigenTablas();
+}
+
+function quitarFiltroMantisOrigen(dim, valor) {
+  _mantisOrigenFiltros = _mantisOrigenFiltros.filter(function(x) { return !(x.dim === dim && x.valor === valor); });
+  _renderMantisOrigenTablas();
+}
+
+function limpiarFiltroMantisOrigen() {
+  _mantisOrigenFiltros = [];
+  _renderMantisOrigenTablas();
+}
+
+function _pasaFiltros(d, filtros) {
+  var porDim = {};
+  filtros.forEach(function(f) { (porDim[f.dim] = porDim[f.dim] || []).push(f.valor); });
+  return Object.keys(porDim).every(function(dim) { return porDim[dim].indexOf(d[dim]) !== -1; });
+}
+
+// la tabla de una dimension se pinta con el detalle filtrado por los OTROS
+// campos seleccionados (nunca por su propio campo) -- asi cada tabla sigue
+// mostrando todas sus filas y se puede seguir añadiendo/quitando seleccion.
+function _detalleParaDim(dim) {
+  var otros = _mantisOrigenFiltros.filter(function(f) { return f.dim !== dim; });
+  return otros.length ? _mantisOrigenDetalle.filter(function(d) { return _pasaFiltros(d, otros); }) : _mantisOrigenDetalle;
+}
+
+function _mantisOrigenAggregadosActuales() {
+  return {
+    empresa: _aggDimension(_detalleParaDim('empresa'), 'empresa'),
+    tecnico: _aggDimension(_detalleParaDim('tecnico'), 'tecnico'),
+    categoria: _aggDimension(_detalleParaDim('categoria'), 'categoria'),
+  };
+}
+
+function _renderMantisOrigenTablas() {
+  var box = document.getElementById('mantisOrigenBlock');
+  if (!_mantisOrigenDetalle.length) {
+    box.innerHTML = '<p style="color:var(--muted);font-size:13px;">Elige un rango de fechas y pulsa "Calcular desglose".</p>';
+    _renderMantisTendencia();
+    return;
+  }
+  var html = '';
+  if (_mantisOrigenFiltros.length) {
+    var totalFiltrado = _mantisOrigenDetalle.filter(function(d) { return _pasaFiltros(d, _mantisOrigenFiltros); }).length;
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12.5px;flex-wrap:wrap;">' +
+      '<span style="color:var(--muted);">Filtrando por:</span>';
+    _mantisOrigenFiltros.forEach(function(f) {
+      html += '<span class="sla-badge sla-badge-blue" style="cursor:pointer;" ' +
+        'onclick="quitarFiltroMantisOrigen(' + _esc(JSON.stringify(f.dim)) + ',' + _esc(JSON.stringify(f.valor)) + ')" ' +
+        'title="Quitar este filtro">' + _esc(f.valor) + ' ✕</span>';
+    });
+    html += '<span style="color:var(--muted);">(' + totalFiltrado + ' incidencia' + (totalFiltrado === 1 ? '' : 's') + ')</span>' +
+      '<button type="button" class="btn-secondary btn-sm" onclick="limpiarFiltroMantisOrigen()">Quitar todo</button>' +
+      '</div>';
+  }
+  var agg = _mantisOrigenAggregadosActuales();
+  html += _renderTablaOrigen('Empresa', agg.empresa, 'empresa');
+  html += '<h3 style="font-size:13px;margin:16px 0 8px;">Por técnico</h3>';
+  html += _renderTablaOrigen('Técnico', agg.tecnico, 'tecnico');
+  html += '<h3 style="font-size:13px;margin:16px 0 8px;">Por categoría</h3>';
+  html += _renderTablaOrigen('Categoría', agg.categoria, 'categoria');
+  box.innerHTML = html;
+  _renderMantisTendencia();
+}
+
+function exportarMantisOrigenExcel() {
+  if (!_mantisOrigenDetalle.length) { alert('Calcula un desglose primero.'); return; }
+  var btn = document.getElementById('mantisOrigenExportBtn');
+  btn.disabled = true;
+  var original = btn.textContent;
+  btn.textContent = 'Exportando…';
+  fetch('/mantis/origen-desglose/exportar/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+    body: JSON.stringify(_mantisOrigenAggregadosActuales()),
+  })
+    .then(function(r) { if (!r.ok) throw new Error('export failed'); return r.blob(); })
+    .then(function(blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'desglose_origen_mantis.xlsx';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    })
+    .catch(function() { alert('Error al exportar el Excel.'); })
+    .finally(function() { btn.disabled = false; btn.textContent = original; });
+}
+
+// Solo borra lo guardado en el NAVEGADOR (localStorage + lo que hay en
+// memoria). El espejo del servidor (mantis_espejo) no se toca: se pone al
+// dia solo en cada calculo, y rehacerlo desde cero cuesta ~2,5 min.
+function limpiarCacheMantisOrigen() {
+  try { localStorage.removeItem(MANTIS_ORIGEN_STORAGE_KEY); } catch (e) { /* sin storage: nada que borrar */ }
+  _mantisOrigenDetalle = [];
+  _mantisOrigenFiltros = [];
+  _renderMantisOrigenTablas();
+}
+
+var _mantisOrigenTodas = false;
+function toggleMantisOrigenTodas() {
+  _mantisOrigenTodas = !_mantisOrigenTodas;
+  var toggleBtn = document.getElementById('mantisOrigenTodasBtn');
+  toggleBtn.textContent = 'Todas las empresas: ' + (_mantisOrigenTodas ? 'ON' : 'OFF');
+  toggleBtn.classList.toggle('btn-primary', _mantisOrigenTodas);
+  toggleBtn.classList.toggle('btn-secondary', !_mantisOrigenTodas);
+  // si ya habia un desglose calculado, se recalcula con el nuevo alcance
+  if (document.getElementById('mantisOrigenDesde').value && document.getElementById('mantisOrigenHasta').value
+      && _mantisOrigenDetalle.length) {
+    calcularMantisOrigen();
+  }
+}
+
+function calcularMantisOrigen() {
+  var box = document.getElementById('mantisOrigenBlock');
+  var btn = document.getElementById('mantisOrigenBtn');
+  var desde = document.getElementById('mantisOrigenDesde').value;
+  var hasta = document.getElementById('mantisOrigenHasta').value;
+  if (!desde || !hasta) { alert('Elige un rango de fechas primero.'); return; }
+
+  btn.disabled = true;
+  var textoOriginal = btn.textContent;
+  btn.textContent = 'Calculando…';
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px;">Cargando…</p>';
+
+  var url = '/mantis/origen-desglose/?desde=' + encodeURIComponent(desde) + '&hasta=' + encodeURIComponent(hasta) +
+    '&todas=' + (_mantisOrigenTodas ? '1' : '0');
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      if (!data.ok) {
+        box.innerHTML = '<p style="color:#b91c1c;font-size:13px;">' + _esc(data.error) + '</p>';
+        return;
+      }
+      _mantisOrigenDetalle = data.detalle || [];
+      _mantisOrigenFiltros = [];
+      _guardarMantisOrigen(desde, hasta);
+      _renderMantisOrigenTablas();
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      box.innerHTML = '<p style="color:#b91c1c;font-size:13px;">Error al calcular el desglose.</p>';
+    });
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,164 @@
+{% extends "_base.html" %}
+{% block title %}{{ fecha }} — Agenda — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+  select.select-inline { padding: 6px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); }
+  input[type="text"] { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--panel); color: var(--ink); }
+
+  .agenda-page { padding: 16px 20px; }
+  .agenda-reuniones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .agenda-reunion-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--color-violet-tint); color: var(--color-violet-dark); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .agenda-reunion-chip:hover { background: var(--color-violet); color: #fff; }
+
+  .agenda-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .agenda-grid { grid-template-columns: 1fr; } }
+  .agenda-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 18px 20px; }
+  .agenda-panel-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 14px; }
+  .agenda-inline-form { display: flex; gap: 6px; margin-bottom: 14px; }
+  .agenda-inline-form input[type="text"] { flex: 1; }
+  .agenda-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: var(--muted); text-align: center; }
+  .agenda-empty svg { opacity: .35; }
+  .agenda-empty-text { color: var(--muted); font-size: 13px; text-align: center; padding: 12px 0; margin: 0; }
+  .agenda-list { display: flex; flex-direction: column; gap: 2px; }
+  .agenda-list-item { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-radius: var(--radius-sm); font-size: 13px; color: var(--ink); text-decoration: none; cursor: pointer; transition: background .12s; }
+  .agenda-list-item:hover { background: var(--bg); }
+  .agenda-list-item input[type="checkbox"] { flex-shrink: 0; }
+  .agenda-list-text { flex: 1; word-break: break-word; }
+  .agenda-list-item-done .agenda-list-text { text-decoration: line-through; color: var(--muted); }
+  .agenda-list-meta { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+  .whiteboard-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; cursor: pointer; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
+  .whiteboard-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .whiteboard-card-thumb { aspect-ratio: 16/10; background: var(--bg); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); overflow: hidden; }
+  .whiteboard-card-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .whiteboard-card-thumb svg { opacity: .3; }
+  .whiteboard-card-thumb-blank { background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 14px 14px; }
+  .whiteboard-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .whiteboard-card-title { font-weight: 700; font-size: 13px; word-break: break-word; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="breadcrumb">
+  <a href="/calendario/">Calendario</a> › <span class="breadcrumb-current">Agenda — {{ fecha }}</span>
+</div>
+<div class="project-header">
+  <div class="project-header-left">
+    <h1 class="project-title">{{ icon("calendar", 20) }} Agenda — {{ fecha }}</h1>
+  </div>
+</div>
+
+<div class="agenda-page">
+  {% if reuniones_dia %}
+  <div class="agenda-reuniones">
+    {% for r in reuniones_dia %}
+    <a class="agenda-reunion-chip" href="/reunion/{{ r.reunion_id }}/">
+      {{ icon("calendar", 12) }}{% if r.hora %} {{ r.hora[:5] }}{% endif %} {{ r.titulo }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="agenda-grid">
+
+    <!-- PIZARRA -->
+    <div class="agenda-panel">
+      <h2 class="agenda-panel-title">{{ icon("pen-tool", 15) }} Whiteboard</h2>
+      {% if whiteboard_vinculada %}
+      <div class="whiteboard-card" onclick="location.href='/whiteboard/{{ whiteboard_vinculada.whiteboard_id }}/editar/'">
+        <div class="whiteboard-card-thumb{% if not whiteboard_vinculada.thumbnail %} whiteboard-card-thumb-blank{% endif %}">
+          {% if whiteboard_vinculada.thumbnail %}
+          <img src="/whiteboard/{{ whiteboard_vinculada.whiteboard_id }}/imagen/" alt="{{ whiteboard_vinculada.titulo }}">
+          {% else %}
+          {{ icon("pen-tool", 32) }}
+          {% endif %}
+        </div>
+        <div class="whiteboard-card-body">
+          <span class="whiteboard-card-title">{{ whiteboard_vinculada.titulo }}</span>
+        </div>
+      </div>
+      {% else %}
+      <div class="agenda-empty">
+        {{ icon("pen-tool", 26) }}
+        <p>Todavía no hay un whiteboard para este día.</p>
+        <a class="btn-primary btn-sm" href="/whiteboard/nuevo/?agenda_fecha={{ fecha }}">+ Crear whiteboard para este día</a>
+        {% if whiteboards_disponibles %}
+        <form method="post" action="/agenda/{{ fecha }}/pizarra/vincular/" class="agenda-inline-form" style="margin-top:10px;">{{ csrf_field() }}
+          <select name="whiteboard_id" class="select-inline">
+            {% for w in whiteboards_disponibles %}
+            <option value="{{ w.whiteboard_id }}">{{ w.titulo }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-secondary btn-sm">Vincular</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- TAREAS -->
+    <div class="agenda-panel">
+      <h2 class="agenda-panel-title">{{ icon("check-circle", 15) }} Tareas de este día</h2>
+      <form method="post" action="/agenda/{{ fecha }}/tarea/anadir/" class="agenda-inline-form">{{ csrf_field() }}
+        <input type="text" name="title" placeholder="Añadir una tarea…" required>
+        <button type="submit" class="btn-primary btn-sm">Añadir</button>
+      </form>
+      {% if tareas_dia %}
+      <div class="agenda-list">
+        {% for item in tareas_dia %}
+        <label class="agenda-list-item {% if item.hecha %}agenda-list-item-done{% endif %}">
+          <input type="checkbox" {% if item.hecha %}checked{% endif %}
+                 onchange="agendaToggleTarea('{{ item.task.task_id }}','{{ item.toggle_estado }}', this)">
+          <span class="agenda-list-text">{{ item.task.title }}</span>
+          <span class="agenda-list-meta">{{ item.task.status }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="agenda-empty-text">Todavía no hay tareas con vencimiento este día.</p>
+      {% endif %}
+    </div>
+
+    <!-- NOTAS -->
+    <div class="agenda-panel">
+      <h2 class="agenda-panel-title">{{ icon("file-text", 15) }} Notas de este día</h2>
+      <form method="post" action="/agenda/{{ fecha }}/nota/anadir/" class="agenda-inline-form">{{ csrf_field() }}
+        <input type="text" name="titulo" placeholder="Añadir una nota…" required>
+        <button type="submit" class="btn-primary btn-sm">Añadir</button>
+      </form>
+      {% if notas_dia %}
+      <div class="agenda-list">
+        {% for n in notas_dia %}
+        <a href="/notas/" class="agenda-list-item">
+          <span class="agenda-list-text">{{ n.titulo }}</span>
+          <span class="agenda-list-meta">{{ n.actualizada_en }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="agenda-empty-text">Todavía no hay notas para este día.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<script>
+function agendaToggleTarea(taskId, nuevoEstado, checkbox) {
+    checkbox.disabled = true;
+    fetch('/tarea/' + taskId + '/reordenar/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+        body: new URLSearchParams({ status: nuevoEstado, before_id: '' }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function () { location.reload(); })
+    .catch(function () { checkbox.disabled = false; });
+}
+</script>
+{% endblock %}

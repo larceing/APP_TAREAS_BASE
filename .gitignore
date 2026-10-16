@@ -1,0 +1,15 @@
+# configuracion local y secretos
+.env
+app_fastapi/.env
+
+# entornos y caches
+.venv/
+app_fastapi/.venv/
+__pycache__/
+*.pyc
+.cache/
+
+# datos de la instalacion (BD aparte): estado, backups, ficheros subidos, logs
+/data/
+/media/
+app_fastapi/logs/

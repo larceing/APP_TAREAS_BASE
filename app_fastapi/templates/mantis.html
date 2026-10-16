@@ -1,0 +1,276 @@
+{% extends "_base.html" %}
+{% block title %}Mantis — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .project-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 24px 16px; background: var(--panel); border-top: 4px solid var(--selected); border-bottom: 1px solid var(--border); box-shadow: var(--shadow-sm); position: relative; z-index: 1; flex-shrink: 0; }
+  .project-header-left { flex: 1; }
+  .project-header-right { flex-shrink: 0; padding-top: 4px; display: flex; align-items: center; gap: var(--gap-btn); }
+  .project-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-primary:disabled { opacity: .5; cursor: default; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; }
+  .select-inline { padding: 7px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--ink); font-size: 13px; font-family: inherit; }
+  .select-inline:focus { outline: none; border-color: var(--selected); }
+
+  .notas-page { padding: 16px 20px; }
+  .notas-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 60px 20px; color: var(--muted); text-align: center; }
+  .notas-empty svg { opacity: .4; }
+
+  .add-task-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); gap: 12px; cursor: pointer; user-select: none; background: var(--panel); }
+  .add-task-row:hover { background: var(--bg); }
+  .add-task-row-selected, .add-task-row-selected:hover { background: color-mix(in srgb, var(--selected) 12%, var(--panel)); }
+  .add-task-select-wrap { position: relative; width: 18px; height: 18px; flex-shrink: 0; }
+  .add-task-select-wrap input { width: 18px; height: 18px; }
+  .add-task-info { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; }
+  .add-task-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+  .add-task-title { font-size: 13px; font-weight: 600; flex: 1; min-width: 160px; }
+  .add-task-cat { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .mantis-empresa-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .mantis-empresa-wrap label { font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .mantis-empresa-select { padding: 3px 6px; font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="project-header">
+  <div class="project-header-left"><h1 class="project-title">{{ icon("download", 20) }} Mantis</h1></div>
+  {% if mantis_destino_proyecto %}
+  <div class="project-header-right">
+    <span id="mantisCount" style="font-size:12px;color:var(--muted);"></span>
+    <select id="mantisMoverA" class="select-inline" onchange="updateMantisMoveBadges()">
+      <option value="">— solo importar —</option>
+      {% for e in empresas_mantis %}<option value="{{ e.mantis_project_id }}">Mover a {{ e.nombre }}</option>{% endfor %}
+    </select>
+    <button class="btn-primary" id="mantisSubmitBtn" onclick="submitMantisImport()" disabled>Importar seleccionadas</button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="notas-page">
+  {% if mantis_destino_proyecto %}
+  <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+    Selecciona incidencias y créalas como tareas. Destino actual: <strong>{{ mantis_destino_proyecto.nombre }}</strong>
+    <a href="/configuracion/?tipo=mantis">(cambiar)</a>
+  </p>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted);margin-bottom:16px;">
+    <span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:var(--color-blue);display:inline-block;"></span>Pool (Incidencias)</span>
+    {% for e in empresas_mantis %}
+    <span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:{{ e.color }};display:inline-block;"></span>{{ e.nombre }}</span>
+    {% endfor %}
+    <span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:var(--color-amber);display:inline-block;"></span>Sin asignar</span>
+    <span style="display:flex;align-items:center;gap:5px;"><strong style="color:var(--color-blue-dark);">Asignada a ti</strong></span>
+  </div>
+  <script id="mantis-empresas" type="application/json">{{ empresas_mantis|tojson_seguro }}</script>
+  <div id="mantisList">
+    <p style="color:var(--muted);font-size:13px;">Cargando…</p>
+  </div>
+  {% else %}
+  <div class="notas-empty">
+    {{ icon("download", 32) }}
+    <p>Todavía no hay un proyecto destino configurado para importar incidencias de Mantis.</p>
+    <a href="/configuracion/?tipo=mantis" class="btn-primary btn-sm">Configurar Mantis</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if mantis_destino_proyecto %}
+<script>
+var MANTIS_BASE_URL = {{ mantis_base_url|tojson_seguro }};
+
+function _esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+var _mantisEmpresasPorId = {};
+JSON.parse(document.getElementById('mantis-empresas').textContent).forEach(function(e) {
+  _mantisEmpresasPorId[e.mantis_project_id] = e;
+});
+
+function _mantisProjectColor(inc) {
+  var empresa = _mantisEmpresasPorId[inc.proyecto_id];
+  if (!empresa) return {bg: 'var(--color-blue-tint)', text: 'var(--color-blue-dark)'};
+  return {bg: empresa.color + '22', text: empresa.color};
+}
+function _mantisStatusColor(estado) {
+  var e = (estado || '').toLowerCase();
+  if (e === 'nueva') return {bg: 'var(--color-red-tint)', text: 'var(--color-red-dark)'};
+  if (e === 'asignado') return {bg: 'var(--color-blue-tint)', text: 'var(--color-blue-dark)'};
+  return {bg: 'var(--color-gray-tint)', text: 'var(--color-gray-dark)'};
+}
+function _mantisAsignadaHtml(inc) {
+  if (inc.asignada_a === 'SIN ASIGNAR') {
+    return '<span style="color:var(--color-amber-dark);background:var(--color-amber-tint);padding:1px 6px;border-radius:4px;">' + _esc(inc.asignada_a) + '</span>';
+  }
+  var texto = _esc(inc.asignada_a);
+  return inc.asignada_a_soy_yo ? '<strong style="color:var(--color-blue-dark);">' + texto + ' (tú)</strong>' : texto;
+}
+function _mantisReportaHtml(inc) {
+  var texto = _esc(inc.reporta);
+  return inc.reporta_soy_yo ? '<strong style="color:var(--color-blue-dark);">' + texto + ' (tú)</strong>' : texto;
+}
+
+var _mantisSelectedIds = new Set();
+var _mantisLastIndex = null;
+var _mantisIncidenciasPorId = {};
+
+function _mantisEsElegibleParaMover(inc) {
+  return inc.es_pool && inc.asignada_a === 'SIN ASIGNAR';
+}
+
+// selector manual de empresa: solo en incidencias cuyo proyecto de Mantis
+// todavia no mapea a ninguna empresa (pool sin triar) -- nunca se adivina,
+// solo se precarga con empresa_sugerida_id (dominio del email del reportero)
+// como sugerencia editable.
+function _mantisNecesitaEmpresaManual(inc) {
+  return !_mantisEmpresasPorId[inc.proyecto_id];
+}
+function _mantisEmpresaSelectHtml(inc) {
+  var opciones = '<option value="">— elegir empresa —</option>';
+  Object.keys(_mantisEmpresasPorId).forEach(function(pid) {
+    var e = _mantisEmpresasPorId[pid];
+    var sel = (inc.empresa_sugerida_id === e.empresa_id) ? ' selected' : '';
+    opciones += '<option value="' + e.empresa_id + '"' + sel + '>' + _esc(e.nombre) + '</option>';
+  });
+  return '<span class="mantis-empresa-wrap" onclick="event.stopPropagation()">' +
+    '<label>Empresa</label>' +
+    '<select class="select-inline mantis-empresa-select" data-issue-id="' + inc.id + '">' + opciones + '</select>' +
+    '</span>';
+}
+
+function updateMantisMoveBadges() {
+  var destino = document.getElementById('mantisMoverA').value;
+  var empresaDestino = _mantisEmpresasPorId[destino];
+  var nombreDestino = empresaDestino ? empresaDestino.nombre : '';
+  document.querySelectorAll('#mantisList .add-task-row').forEach(function(row) {
+    var badge = row.querySelector('.mantis-move-badge');
+    if (!badge) return;
+    var inc = _mantisIncidenciasPorId[row.dataset.issueId];
+    if (!destino) { badge.textContent = ''; return; }
+    if (_mantisEsElegibleParaMover(inc)) {
+      badge.textContent = '→ ' + nombreDestino;
+      badge.style.color = 'var(--color-blue-dark)'; badge.style.background = 'var(--color-blue-tint)';
+    } else {
+      badge.textContent = 'no se moverá';
+      badge.style.color = 'var(--muted)'; badge.style.background = 'transparent';
+    }
+  });
+  updateMantisEmpresaSelectors();
+}
+
+// oculta el selector manual de empresa cuando la fila se va a mover (y por
+// tanto ya va a quedar mapeada por proyecto de Mantis, sin elegir nada a mano)
+function updateMantisEmpresaSelectors() {
+  var destino = document.getElementById('mantisMoverA').value;
+  document.querySelectorAll('#mantisList .mantis-empresa-wrap').forEach(function(wrap) {
+    var select = wrap.querySelector('.mantis-empresa-select');
+    var inc = _mantisIncidenciasPorId[select.dataset.issueId];
+    var cubiertaPorMover = destino && _mantisEsElegibleParaMover(inc);
+    wrap.style.display = cubiertaPorMover ? 'none' : '';
+  });
+}
+
+function loadMantisIncidencias() {
+  _mantisSelectedIds.clear();
+  _mantisLastIndex = null;
+  updateMantisBar();
+  var list = document.getElementById('mantisList');
+  list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px;">Cargando…</p>';
+  fetch('/mantis/incidencias/json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) { list.innerHTML = '<p style="color:#b91c1c;font-size:13px;padding:16px;">Error: ' + _esc(data.error) + '</p>'; return; }
+      if (!data.incidencias.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px;">Sin incidencias.</p>'; return; }
+      var html = '';
+      _mantisIncidenciasPorId = {};
+      data.incidencias.forEach(function(inc, i) {
+        _mantisIncidenciasPorId[inc.id] = inc;
+        var col = _mantisProjectColor(inc);
+        var estCol = _mantisStatusColor(inc.estado);
+        var idHtml = MANTIS_BASE_URL
+          ? '<a href="' + MANTIS_BASE_URL + '/view.php?id=' + inc.id + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline">#' + inc.id + '</a>'
+          : '#' + inc.id;
+        html += '<div class="add-task-row" data-issue-id="' + inc.id + '" data-index="' + i + '" onclick="onMantisRowClick(event, this)">' +
+          '<span class="add-task-select-wrap" onclick="event.stopPropagation()">' +
+          '<input type="checkbox" class="mantis-select" value="' + inc.id + '" data-index="' + i + '" onchange="onMantisSelect(this)">' +
+          '</span>' +
+          '<div class="add-task-info">' +
+          '<span class="add-task-status" style="background:' + col.bg + ';color:' + col.text + '">' + idHtml + ' · ' + _esc(inc.proyecto) + '</span>' +
+          '<span class="add-task-status" style="background:' + estCol.bg + ';color:' + estCol.text + '">' + _esc(inc.estado) + '</span>' +
+          '<span class="add-task-title">' + _esc(inc.resumen) + '</span>' +
+          '<span class="add-task-cat">' + _esc(inc.categoria) + ' · ' + _esc(inc.prioridad) + ' · reporta: ' + _mantisReportaHtml(inc) + ' · asignada a: ' + _mantisAsignadaHtml(inc) + '</span>' +
+          '</div>' +
+          (_mantisNecesitaEmpresaManual(inc) ? _mantisEmpresaSelectHtml(inc) : '') +
+          '<span class="mantis-move-badge" style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;"></span>' +
+          '</div>';
+      });
+      list.innerHTML = html;
+      updateMantisMoveBadges();
+    })
+    .catch(function() { list.innerHTML = '<p style="color:#b91c1c;font-size:13px;padding:16px;">Error al cargar Mantis.</p>'; });
+}
+
+function onMantisRowClick(evt, row) {
+  var checkbox = row.querySelector('.mantis-select');
+  if (evt.shiftKey && _mantisLastIndex !== null) {
+    var idx = parseInt(row.dataset.index, 10);
+    var from = Math.min(_mantisLastIndex, idx), to = Math.max(_mantisLastIndex, idx);
+    document.querySelectorAll('#mantisList .add-task-row').forEach(function(r) {
+      var i = parseInt(r.dataset.index, 10);
+      if (i >= from && i <= to) {
+        var cb = r.querySelector('.mantis-select');
+        cb.checked = true; _mantisSelectedIds.add(cb.value); r.classList.add('add-task-row-selected');
+      }
+    });
+  } else {
+    checkbox.checked = !checkbox.checked;
+    onMantisSelect(checkbox);
+  }
+  updateMantisBar();
+}
+
+function onMantisSelect(checkbox) {
+  var row = checkbox.closest('.add-task-row');
+  if (checkbox.checked) {
+    _mantisSelectedIds.add(checkbox.value); row.classList.add('add-task-row-selected');
+    _mantisLastIndex = parseInt(checkbox.dataset.index, 10);
+  } else {
+    _mantisSelectedIds.delete(checkbox.value); row.classList.remove('add-task-row-selected');
+  }
+  updateMantisBar();
+}
+
+function updateMantisBar() {
+  var count = _mantisSelectedIds.size;
+  document.getElementById('mantisCount').textContent = count > 0 ? (count + ' seleccionada' + (count !== 1 ? 's' : '')) : '';
+  document.getElementById('mantisSubmitBtn').disabled = count === 0;
+}
+
+function submitMantisImport() {
+  if (!_mantisSelectedIds.size) return;
+  var btn = document.getElementById('mantisSubmitBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  var empresaOverride = {};
+  document.querySelectorAll('#mantisList .mantis-empresa-select').forEach(function(select) {
+    if (select.value) empresaOverride[select.dataset.issueId] = select.value;
+  });
+  var fd = new FormData();
+  fd.append('issue_ids', JSON.stringify(Array.from(_mantisSelectedIds)));
+  fd.append('mover_a', document.getElementById('mantisMoverA').value);
+  fd.append('empresa_override', JSON.stringify(empresaOverride));
+  fetch('/mantis/importar/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { alert(d.error); btn.disabled = false; return; }
+      if (d.movidas_fallidas && d.movidas_fallidas.length) alert('Algunas no se pudieron mover en Mantis:\n' + d.movidas_fallidas.join('\n'));
+      if (d.ya_importadas && d.ya_importadas.length) alert('Ya estaban importadas: #' + d.ya_importadas.join(', #'));
+      location.reload();
+    })
+    .catch(function() { location.reload(); });
+}
+
+document.addEventListener('DOMContentLoaded', loadMantisIncidencias);
+</script>
+{% endif %}
+{% endblock %}

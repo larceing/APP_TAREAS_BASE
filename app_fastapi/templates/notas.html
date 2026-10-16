@@ -1,0 +1,199 @@
+{% extends "_base.html" %}
+{% block title %}Notas — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .page-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 32px; border-top: 4px solid var(--selected); background: var(--panel); border-bottom: 1px solid var(--border); }
+  .page-header h1 { font-size: 20px; margin: 0; }
+  .page-header-right { display: flex; align-items: center; gap: 10px; }
+  input[type=text], textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; }
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .btn-danger { background: #c5221f; color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; }
+  .page { padding: 24px 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card { border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow-sm); cursor: pointer; display: flex; flex-direction: column; min-height: 140px; }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .card-title { font-weight: 700; font-size: 14px; }
+  .card-actions span { cursor: pointer; margin-left: 6px; opacity: .7; }
+  .card-actions span:hover { opacity: 1; }
+  .card-body { font-size: 13px; margin-top: 8px; flex: 1; max-height: 4.5em; overflow: hidden; line-height: 1.5em; }
+  .card-leermas { font-size: 12px; font-weight: 600; color: var(--color-blue); text-decoration: none; display: none; margin-top: 4px; }
+  .card-leermas.show { display: inline-block; }
+  .card-foot { font-size: 11px; color: rgba(0,0,0,.5); margin-top: 8px; }
+  .card.hidden { display: none; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; padding: 22px 24px; width: 360px; max-width: 90vw; }
+  .modal h3 { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .color-picker { display: flex; gap: 8px; margin-top: 4px; }
+  .color-swatch input { display: none; }
+  .color-swatch span { display: block; width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; }
+  .color-swatch input:checked + span { border-color: var(--color-blue); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .panel { position: fixed; top: 0; right: -420px; width: 400px; max-width: 90vw; height: 100%; background: var(--panel); box-shadow: var(--shadow-md); transition: right .2s; z-index: 160; overflow-y: auto; }
+  .panel.open { right: 0; }
+  .panel-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.2); z-index: 155; }
+  .panel-overlay.open { display: block; }
+  .panel-close { float: right; border: none; background: none; font-size: 16px; cursor: pointer; padding: 16px; }
+  .panel-body { padding: 8px 24px 24px; }
+  .panel-body h2 { font-size: 17px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 style="display:flex;align-items:center;gap:8px;">{{ icon("file-text", 20) }} Notas</h1>
+  <div class="page-header-right">
+    {% if notas %}<input type="text" id="notaSearch" placeholder="Buscar en notas...">{% endif %}
+    <button class="btn-primary" type="button" onclick="openNotaModal('new')">+ Nueva nota</button>
+  </div>
+</div>
+
+<div class="page">
+  {% if notas %}
+  <div class="grid" id="notasGrid">
+    {% for n in notas %}
+    <div class="card" data-nota-id="{{ n.nota_id }}" data-titulo="{{ n.titulo }}" data-contenido="{{ n.contenido }}" data-color="{{ n.color }}" style="background:{{ n.color }}" onclick="onCardClick(event, this)">
+      <div class="card-head">
+        <span class="card-title">{{ n.titulo }}</span>
+        <div class="card-actions">
+          <span onclick="event.stopPropagation(); openNotaModal('edit', this.closest('.card'))" title="Editar">{{ icon("edit-2", 14) }}</span>
+          <span onclick="event.stopPropagation(); confirmDeleteNota(this.closest('.card'))" title="Eliminar">{{ icon("trash-2", 14) }}</span>
+        </div>
+      </div>
+      {% if n.contenido %}<div class="card-body">{{ n.contenido|linebreaksbr }}</div>{% endif %}
+      <a class="card-leermas">Leer más &rarr;</a>
+      <div class="card-foot">{{ n.actualizada_en }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="empty" id="notasSinResultados" style="display:none">
+    <p>Ninguna nota coincide con la búsqueda.</p>
+  </div>
+  {% else %}
+  <div class="empty">
+    <p>Aún no tienes ninguna nota.</p>
+    <button class="btn-primary" type="button" onclick="openNotaModal('new')">+ Crear la primera</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- PANEL: leer nota completa -->
+<div class="panel" id="notaPanel">
+  <button class="panel-close" onclick="closeNotaPanel()">✕</button>
+  <div class="panel-body">
+    <h2 id="notaPanelTitle"></h2>
+    <div id="notaPanelBody"></div>
+  </div>
+</div>
+<div class="panel-overlay" id="notaPanelOverlay" onclick="closeNotaPanel()"></div>
+
+<!-- MODAL: crear/editar nota -->
+<div class="modal-overlay" id="notaModal">
+  <div class="modal">
+    <h3 id="notaModalTitle">Nueva nota</h3>
+    <form method="post" id="notaModalForm">{{ csrf_field() }}
+      <div class="form-group"><label>TÍTULO</label><input type="text" name="titulo" id="nota_titulo" required maxlength="200"></div>
+      <div class="form-group"><label>CONTENIDO</label><textarea name="contenido" id="nota_contenido" rows="5"></textarea></div>
+      <div class="form-group"><label>COLOR</label>
+        <div class="color-picker" id="nota_colorPicker">
+          {% for color in nota_colors %}
+          <label class="color-swatch"><input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}><span style="background:{{ color }}"></span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('notaModal')">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: eliminar nota -->
+<div class="modal-overlay" id="notaDeleteModal">
+  <div class="modal">
+    <h3>Eliminar nota</h3>
+    <p id="notaDeleteText"></p>
+    <form method="post" id="notaDeleteForm">{{ csrf_field() }}
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('notaDeleteModal')">Cancelar</button>
+        <button type="submit" class="btn-danger">Eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openNotaModal(mode, card) {
+  var modal = document.getElementById('notaModal');
+  var form  = document.getElementById('notaModalForm');
+  document.getElementById('notaModalTitle').textContent = mode === 'new' ? 'Nueva nota' : 'Editar nota';
+  form.action = mode === 'new' ? '/notas/nueva/' : '/notas/' + card.dataset.notaId + '/editar/';
+  document.getElementById('nota_titulo').value = card ? card.dataset.titulo : '';
+  document.getElementById('nota_contenido').value = card ? card.dataset.contenido : '';
+  var color = card ? card.dataset.color : '';
+  var firstRadio = modal.querySelector('input[name="color"]');
+  if (color) {
+    var radio = modal.querySelector('input[name="color"][value="' + color + '"]');
+    if (radio) radio.checked = true;
+  } else if (firstRadio) {
+    firstRadio.checked = true;
+  }
+  modal.classList.add('open');
+}
+
+function confirmDeleteNota(card) {
+  document.getElementById('notaDeleteText').textContent = '¿Seguro que quieres eliminar "' + card.dataset.titulo + '"? Esta acción no se puede deshacer.';
+  document.getElementById('notaDeleteForm').action = '/notas/' + card.dataset.notaId + '/eliminar/';
+  document.getElementById('notaDeleteModal').classList.add('open');
+}
+
+function openNotaPanel(card) {
+  document.getElementById('notaPanelTitle').textContent = card.dataset.titulo;
+  var body = card.querySelector('.card-body');
+  document.getElementById('notaPanelBody').innerHTML = body ? body.innerHTML : '';
+  document.getElementById('notaPanel').classList.add('open');
+  document.getElementById('notaPanelOverlay').classList.add('open');
+}
+function closeNotaPanel() {
+  document.getElementById('notaPanel').classList.remove('open');
+  document.getElementById('notaPanelOverlay').classList.remove('open');
+}
+function onCardClick(evt, card) {
+  if (evt.target.closest('.card-actions')) return;
+  openNotaPanel(card);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var cards = document.querySelectorAll('.card');
+  cards.forEach(function(card) {
+    var body = card.querySelector('.card-body');
+    var leerMas = card.querySelector('.card-leermas');
+    if (body && leerMas && body.scrollHeight > body.clientHeight + 1) {
+      leerMas.classList.add('show');
+    }
+  });
+
+  var searchInput = document.getElementById('notaSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      var query = searchInput.value.trim().toLowerCase();
+      var visibles = 0;
+      cards.forEach(function(card) {
+        var matches = !query || card.textContent.toLowerCase().indexOf(query) !== -1;
+        card.classList.toggle('hidden', !matches);
+        if (matches) visibles++;
+      });
+      document.getElementById('notasSinResultados').style.display = visibles === 0 ? 'block' : 'none';
+    });
+  }
+});
+</script>
+{% endblock %}

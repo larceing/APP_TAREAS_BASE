@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}{{ app_nombre() }}{% endblock %}</title>
+<!-- icono propio de esta "v2", distinto al favicon.ico de la app Django --
+     un rayo (referencia a FastAPI) sobre el morado --selected de la app,
+     para que se distinga a simple vista en la pestaña del navegador. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237c3aed'/%3E%3Cpath d='M17.5 5 8 18h6.2l-1.7 9L24 14h-6.5z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/css/main.css">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+{% set _PROYECTO_TABS = ['resumen', 'dashboard', 'tablero', 'backlog', 'gantt', 'sprints', 'documentos', 'wiki', 'muro_proyecto'] %}
+
+<header class="app-header">
+    <div class="header-left">
+        <button class="sidebar-toggle" id="sidebarToggle" title="Mostrar/ocultar menú">{{ icon("menu", 18) }}</button>
+        <a href="/" class="app-title"><img src="{{ app_logo() }}" alt="{{ app_empresa() }}" class="app-logo">{{ app_nombre() }}</a>
+    </div>
+    <div class="header-center">
+        <div class="global-search-wrap">
+            <input type="text" id="globalSearchInput" placeholder="🔍  Buscar tareas..." autocomplete="off">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+    </div>
+    <div class="header-right">
+        <a href="/espacios/" class="header-view-btn {% if activo == 'espacios' or activo in _PROYECTO_TABS %}active{% endif %}">{{ icon("folder", 14) }} Espacios</a>
+        <a href="/calendario/" class="header-view-btn {% if activo == 'calendario' %}active{% endif %}">{{ icon("calendar", 14) }} Calendario</a>
+        <a href="/kanban/" class="header-view-btn {% if activo == 'kanban_global' %}active{% endif %}">{{ icon("columns", 14) }} Kanban</a>
+        <a href="/scrum/" class="header-view-btn {% if activo == 'scrum_global' %}active{% endif %}">{{ icon("layers", 14) }} Scrum</a>
+        {% if es_it() %}<a href="/sla/" class="header-view-btn {% if activo == 'sla' %}active{% endif %}">{{ icon("trending-up", 14) }} SLA</a>{% endif %}
+        <button type="button" class="header-view-btn" id="bookmarkPageBtn" title="Guardar esta página como marcador" onclick="abrirMarcadorModal()">{{ icon("star", 14) }}</button>
+        <div class="notif-wrap">
+            <button type="button" class="header-view-btn notif-btn {% if activo == 'notificaciones' %}active{% endif %}" id="notifBtn" title="Notificaciones" onclick="toggleNotif(event)">{{ icon("bell", 15) }}<span class="notif-count" id="notifCount" hidden></span></button>
+            <div class="notif-dropdown" id="notifDropdown" onclick="event.stopPropagation()">
+                <div class="notif-dd-head">
+                    <strong>Notificaciones</strong>
+                    <form method="post" action="/notificaciones/leer-todas/">{{ csrf_field() }}<button type="submit">Marcar todas leídas</button></form>
+                </div>
+                <div class="notif-dd-lista" id="notifLista"><p class="notif-vacio">Sin notificaciones.</p></div>
+                <a href="/notificaciones/" class="notif-ver-todas">Ver todas</a>
+            </div>
+        </div>
+        <a href="/configuracion/" class="header-view-btn {% if activo == 'configuracion' %}active{% endif %}" title="Configuración">{{ icon("settings", 14) }}</a>
+        <div class="user-menu-wrap">
+            <button class="user-menu-btn" id="userMenuBtn" onclick="toggleUserMenu(event)">
+                {{ icon("user", 15) }} {{ usuario }} {{ icon("chevron-down", 12) }}
+            </button>
+            <div class="user-menu-dropdown" id="userMenuDropdown">
+                <form method="post" action="/entorno/cambiar/" id="entornoForm"
+                      onsubmit="event.preventDefault(); showConfirm('¿Cambiar de base de datos?', function(){ document.getElementById('entornoForm').submit(); }, {title:'Cambiar de entorno', okText:'Cambiar'}); return false;">{{ csrf_field() }}
+                    {% if entorno_actual() == 'test' %}
+                    <button type="submit" class="user-menu-entorno user-menu-entorno-prueba">🧪 Modo pruebas <span>(cambiar a real)</span></button>
+                    {% else %}
+                    <button type="submit" class="user-menu-entorno user-menu-entorno-real">🟢 Modo real <span>(cambiar a pruebas)</span></button>
+                    {% endif %}
+                </form>
+                <a href="/logout/" class="user-menu-logout">{{ icon("log-out", 14) }} Salir</a>
+            </div>
+        </div>
+    </div>
+</header>
+<a class="notif-toast" id="notifToast" hidden></a>
+{% if entorno_actual() == 'test' %}
+<div class="entorno-banner">🧪 Estás en el entorno de pruebas -- los cambios no tocan los datos reales.</div>
+{% endif %}
+{% set _av = avisos_activos() %}
+{% if _av.alarmas or _av.avisos %}
+<div class="banner-grid">
+    {% for alarma in _av.alarmas %}
+    <div class="alarma-banner">
+        ⚠ <span class="banner-tipo-chip" style="background:{{ alarma.color }}">{{ alarma.nombre }}</span>
+        {{ alarma.nota or "Periodo activo" }}
+        <span class="aviso-banner-range">({{ alarma.fecha_inicio }} – {{ alarma.fecha_fin }})</span>
+    </div>
+    {% endfor %}
+    {% for aviso in _av.avisos %}
+    <div class="aviso-banner" style="--aviso-color:{{ aviso.color }}">
+        <span class="banner-tipo-chip" style="background:{{ aviso.color }}">{{ aviso.nombre }}</span>
+        {{ aviso.nota or "Periodo activo" }}
+        <span class="aviso-banner-range">({{ aviso.fecha_inicio }} – {{ aviso.fecha_fin }})</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% set _flashed = get_flashed_messages() %}
+{% if _flashed %}
+<div class="django-messages">
+    {% for m in _flashed %}
+    <div class="django-message django-message-{{ m.tags }}">{{ m.texto }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="app-body">
+    <!-- mismo comportamiento que la app real: colapsado por defecto en
+         paginas que no pertenecen a un proyecto concreto (Notas/Mantis son
+         paginas globales, igual que alli) -- se despliega a mano con el
+         boton de la cabecera, o solo por defecto en paginas de un proyecto
+         (tablero/Wiki). -->
+    <aside class="sidebar {% if activo not in _PROYECTO_TABS %}collapsed{% endif %}" id="sidebar">
+        {% set _marcadores = marcadores_activos() %}
+        {% if _marcadores %}
+        <div class="sidebar-type-label">Marcadores</div>
+        {% for m in _marcadores %}
+        <div class="sidebar-marcador-row">
+            <a href="{{ m.url }}" class="sidebar-marcador-link" title="{{ m.titulo }}">{{ icon("star", 13) }} {{ m.titulo }}</a>
+            <form method="post" action="/marcadores/{{ m.id }}/eliminar/" style="display:inline">{{ csrf_field() }}
+                <button type="submit" class="sidebar-edit-btn" title="Quitar marcador">{{ icon("x", 12) }}</button>
+            </form>
+        </div>
+        {% endfor %}
+        {% endif %}
+        <div class="sidebar-type-label">General</div>
+        <a href="/notas/" class="sidebar-global-link {% if activo == 'notas' %}active{% endif %}">
+            {{ icon("file-text", 14) }} Notas
+        </a>
+        <a href="/buzon/" class="sidebar-global-link {% if activo == 'buzon' %}active{% endif %}">
+            {{ icon("inbox", 14) }} Buzón <span class="sidebar-buzon-count" id="sidebarBuzonCount" hidden></span>
+        </a>
+        <a href="/muro/" class="sidebar-global-link {% if activo == 'muro' %}active{% endif %}">
+            {{ icon("message-circle", 14) }} Muro <span class="sidebar-buzon-count" id="sidebarMuroCount" hidden></span>
+        </a>
+        {% if es_it() and modulo_activo('mantis') %}
+        <a href="/mantis/" class="sidebar-global-link {% if activo == 'mantis' %}active{% endif %}">
+            {{ icon("download", 14) }} Mantis
+        </a>
+        {% endif %}
+        <a href="/whiteboard/" class="sidebar-global-link {% if activo == 'whiteboard' %}active{% endif %}">
+            {{ icon("pen-tool", 14) }} Whiteboard
+        </a>
+        {% if puede_ver_nexus() %}
+        <a href="/nexus/" class="sidebar-global-link {% if activo == 'nexus' %}active{% endif %}">
+            {{ icon("search", 14) }} Nexus
+        </a>
+        {% endif %}
+        <div class="sidebar-divider"></div>
+
+        {% set espacio_grupos = sidebar_projects() %}
+        {% set _TAB_SUFFIXES = {'resumen': '', 'dashboard': 'dashboard/', 'tablero': 'tablero/', 'backlog': 'backlog/', 'gantt': 'gantt/', 'sprints': 'sprints/', 'documentos': 'documentos/', 'wiki': 'wiki/', 'muro_proyecto': 'muro/'} %}
+        {% set proyecto_tab_suffix = _TAB_SUFFIXES.get(activo, '') %}
+
+        {% for grupo in espacio_grupos %}
+        <div class="sidebar-type-label">{{ grupo.nombre }}{% if grupo.es_personal %} <span class="sidebar-personal-tag">(personal)</span>{% endif %}</div>
+        {% for p in grupo.proyectos %}
+        {% set expandible = p.milestones or p.tipo == 'scrum' %}
+        <div class="sidebar-project {% if proyecto_actual == p.id %}active{% endif %}">
+            <div class="sidebar-project-row">
+                {% if expandible %}
+                <button class="sidebar-toggle-arrow" data-pid="{{ p.id }}" type="button">{{ icon("chevron-right", 12) }}</button>
+                {% else %}
+                <span style="width:22px;flex-shrink:0;"></span>
+                {% endif %}
+                <span class="sidebar-dot" style="background:{{ p.color }}"></span>
+                <span class="sidebar-tipo-icon" title="{{ 'Scrum' if p.tipo == 'scrum' else 'Kanban' }}">{{ icon("layers" if p.tipo == "scrum" else "columns", 12) }}</span>
+                <a href="/proyecto/{{ p.id }}/{{ proyecto_tab_suffix }}" class="sidebar-project-name" title="{{ p.nombre }}">{{ p.nombre }}</a>
+                <a class="sidebar-edit-btn" href="/proyecto/{{ p.id }}/duplicar/" title="Duplicar proyecto">{{ icon("copy", 13) }}</a>
+                <button class="sidebar-edit-btn" type="button" title="Editar proyecto"
+                        onclick="openSidebarProjectModal('edit',{{ p.id|tojson_seguro }},{{ p.nombre|tojson_seguro }},{{ p.color|tojson_seguro }},{{ p.tipo|tojson_seguro }},{{ 'true' if p.requiere_subtareas_completas else 'false' }},{{ p.espacio_id|tojson_seguro }})">{{ icon("edit-2", 13) }}</button>
+            </div>
+            {% if expandible %}
+            <div class="sidebar-milestones" id="ms-{{ p.id }}">
+                {% if p.tipo == 'scrum' %}
+                {% if p.sprint_activo %}
+                <div class="sidebar-sprint-active">
+                    <a href="/proyecto/{{ p.id }}/tablero/?sprint_id={{ p.sprint_activo.sprint_id }}" class="sprint-active-link">
+                        <span class="sprint-icon">{{ icon("zap", 12) }}</span>
+                        <span class="sprint-name">{{ p.sprint_activo.nombre }}</span>
+                        <span class="sprint-badge">activo</span>
+                    </a>
+                </div>
+                {% endif %}
+                <a href="/proyecto/{{ p.id }}/sprints/" class="sidebar-sprints-link">Ver todos los sprints {{ icon("arrow-right", 11) }}</a>
+                {% endif %}
+                {% for m in p.milestones %}
+                <div class="sidebar-milestone">
+                    <span class="ms-icon" style="color:{% if m.completado %}#16a34a{% else %}{{ p.color }}{% endif %}">
+                        {% if m.completado %}{{ icon("check-circle", 12) }}{% else %}{{ icon("circle", 12) }}{% endif %}
+                    </span>
+                    <button class="ms-name {% if m.completado %}done{% endif %}" type="button"
+                            onclick="openMilestoneModal('edit',{{ m.milestone_id|tojson_seguro }},{{ m.nombre|tojson_seguro }},{{ m.fecha|tojson_seguro }},{{ 'true' if m.completado else 'false' }},{{ p.id|tojson_seguro }})">{{ m.nombre }}</button>
+                    {% if m.fecha %}<span class="ms-date">{{ m.fecha }}</span>{% endif %}
+                </div>
+                {% endfor %}
+                <button class="ms-add-btn" type="button" onclick="openMilestoneModal('new','','','',false,{{ p.id|tojson_seguro }})">+ Añadir hito</button>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% endfor %}
+
+        {% if not espacio_grupos %}
+        <div class="sidebar-type-label">Proyectos</div>
+        <div class="sidebar-placeholder-note">Aún no hay ningún proyecto.</div>
+        {% endif %}
+
+        <div class="sidebar-divider"></div>
+        <button class="sidebar-new-proj" type="button" onclick="openSidebarProjectModal('new')">{{ icon("plus", 14) }} Nuevo proyecto</button>
+    </aside>
+    <script>
+    // Una vez el usuario pliega/despliega el sidebar a mano, esa preferencia
+    // manda en cualquier pagina (sustituye al colapsado-por-defecto de mas
+    // arriba, que solo aplica hasta el primer toggle) -- sincrono y lo antes
+    // posible en el <body> para evitar parpadeo del estado por defecto.
+    (function() {
+        try {
+            var pref = localStorage.getItem('sidebarCollapsed');
+            if (pref !== null) {
+                document.getElementById('sidebar').classList.toggle('collapsed', pref === '1');
+            }
+        } catch (e) {}
+    })();
+    </script>
+
+    <main class="app-content full" id="appContent">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<!-- MODAL global: hito (crear/editar) -- igual que core/templates/base.html,
+     sin borrado individual porque el original tampoco lo tiene. -->
+<div class="modal-overlay" id="milestoneModal">
+    <div class="modal modal-sm">
+        <div class="modal-body">
+            <h3 class="modal-title" id="msModalTitle">Nuevo hito</h3>
+            <form method="post" id="milestoneModalForm">{{ csrf_field() }}
+                <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="ms_nombre" required></div>
+                <div class="form-group"><label>FECHA</label><input type="date" name="fecha" id="ms_fecha"></div>
+                <div class="form-group form-check">
+                    <input type="checkbox" name="completado" id="ms_completado">
+                    <label for="ms_completado">Completado</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeGlobalModal('milestoneModal')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL global: nuevo marcador -- guarda la URL actual (mas ?abrir=...
+     si hay un modal soportado abierto en ese momento, ver
+     abrirMarcadorModal() mas abajo) bajo el titulo que se ponga aqui. -->
+<div class="modal-overlay" id="bookmarkModal">
+    <div class="modal modal-sm">
+        <div class="modal-body">
+            <h3 class="modal-title">Guardar marcador</h3>
+            <form method="post" action="/marcadores/nuevo/" id="bookmarkModalForm">{{ csrf_field() }}
+                <input type="hidden" name="url" id="bk_url">
+                <div class="form-group"><label>TÍTULO</label><input type="text" name="titulo" id="bk_titulo" required></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeGlobalModal('bookmarkModal')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL global: confirmacion generica (sustituye a los confirm() nativos
+     del navegador para acciones destructivas), igual que core/templates/base.html. -->
+<div class="modal-overlay" id="confirmModal">
+    <div class="modal modal-sm">
+        <div class="modal-body">
+            <h3 class="modal-title" id="confirmModalTitle">Confirmar</h3>
+            <p id="confirmModalText" style="font-size:13px;color:var(--muted);line-height:1.5;"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeGlobalModal('confirmModal')">Cancelar</button>
+                <button type="button" class="btn-primary" id="confirmModalOkBtn">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL global: proyecto (crear/editar) -- distinto de #projectModal de
+     tablero.html (esa es solo para el proyecto de esa pagina en concreto),
+     este vive en el sidebar y sirve para cualquier proyecto desde cualquier
+     pagina, con su propio nombre para no chocar con el de tablero.html. -->
+<div class="modal-overlay" id="sidebarProjectModal">
+    <div class="modal">
+        <div class="modal-body">
+            <h3 class="modal-title" id="spmTitle">Nuevo proyecto</h3>
+            <form method="post" id="sidebarProjectModalForm" enctype="multipart/form-data">{{ csrf_field() }}
+                <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="spm_nombre" required></div>
+                <div class="form-group" id="spm_excelSection">
+                    <label>IMPORTAR TAREAS DESDE EXCEL <span style="font-weight:400;text-transform:none">(opcional, solo al crear)</span></label>
+                    <input type="file" name="excel_tareas" id="spm_excel" accept=".xlsx">
+                    <div class="form-hint">Cada fila se crea como una tarea en "Pendiente". <a href="/excel/plantilla-importar-tareas/" target="_blank">Descargar plantilla</a>.</div>
+                </div>
+                <div class="form-group"><label>TIPO</label>
+                    <div class="type-selector">
+                        <label class="type-option"><input type="radio" name="tipo" value="kanban" id="spm_tipo_kanban" checked>
+                            <div class="type-option-body"><div class="type-option-icon">{{ icon("columns", 18) }}</div><div class="type-option-name">Kanban</div></div>
+                        </label>
+                        <label class="type-option"><input type="radio" name="tipo" value="scrum" id="spm_tipo_scrum">
+                            <div class="type-option-body"><div class="type-option-icon">{{ icon("layers", 18) }}</div><div class="type-option-name">Scrum</div></div>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group"><label>COLOR</label>
+                    <div class="color-picker" id="spm_colorPicker">
+                        {% for c in ["#2563eb","#7c3aed","#db2777","#ea580c","#16a34a","#0891b2","#9333ea","#b45309","#0f766e","#c2410c"] %}
+                        <label class="color-swatch"><input type="radio" name="color" value="{{ c }}" {% if loop.first %}checked{% endif %}><span style="background:{{ c }}"></span></label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-group"><label>ESPACIO</label>
+                    <select name="espacio_id" id="spm_espacio">
+                        <option value="">Sin espacio</option>
+                        {% for e in espacios_activos() %}
+                        <option value="{{ e.id }}">{{ e.nombre }}{% if e.es_personal %} (personal){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group form-check">
+                    <input type="checkbox" name="requiere_subtareas_completas" id="spm_requiereSubtareas">
+                    <label for="spm_requiereSubtareas">Exigir subtareas completas para cerrar</label>
+                    <div class="form-hint">Una tarea de este proyecto no podrá moverse a una columna "Hecha" mientras le queden subtareas sin marcar.</div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeGlobalModal('sidebarProjectModal')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Igual que static/js/board.js::getCookie del original -- global aqui (en
+// vez de duplicarla en cada plantilla) para leer la cookie CSRF
+// (gestor_csrftoken, ver csrf.py) desde cualquier fetch() que haga un POST.
+function getCookie(name) {
+    var value = '; ' + document.cookie;
+    var parts = value.split('; ' + name + '=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+
+// Helper compartido para las acciones que construyen un <form> por JS y lo
+// envian al vuelo (revocar token, eliminar proyecto, etc.) -- centraliza el
+// campo CSRF en un unico sitio en vez de repetirlo en cada callback.
+function submitPostForm(action) {
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = action;
+    var csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrf_token';
+    csrfInput.value = getCookie('gestor_csrftoken');
+    form.appendChild(csrfInput);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+document.getElementById('sidebarToggle').addEventListener('click', function() {
+    var sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('collapsed');
+    document.getElementById('appContent').classList.toggle('full');
+    try { localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed') ? '1' : '0'); } catch (e) {}
+});
+
+function toggleUserMenu(e) {
+    e.stopPropagation();
+    document.getElementById('userMenuDropdown').classList.toggle('open');
+    document.getElementById('notifDropdown').classList.remove('open');
+}
+document.addEventListener('click', function() {
+    document.getElementById('userMenuDropdown').classList.remove('open');
+    document.getElementById('notifDropdown').classList.remove('open');
+});
+
+// ── campana de notificaciones (routers/notificaciones.py) ──────────────────
+// Sondeo cada NOTIF_INTERVALO ms, igual que CS Manager. Si llega algo con id
+// mayor que el ultimo ya visto en este navegador, aviso emergente + (si el
+// usuario lo activo en /notificaciones/) notificacion nativa del navegador.
+// 'notifSinEmergentes' en localStorage = no mostrar el aviso emergente.
+var NOTIF_INTERVALO = 15000;
+function toggleNotif(e) {
+    e.stopPropagation();
+    document.getElementById('notifDropdown').classList.toggle('open');
+    document.getElementById('userMenuDropdown').classList.remove('open');
+}
+function _notifLeer(clave) { try { return localStorage.getItem(clave); } catch (e) { return null; } }
+function _notifGuardar(clave, valor) { try { localStorage.setItem(clave, valor); } catch (e) {} }
+function _notifPintar(datos) {
+    var cnt = document.getElementById('notifCount');
+    cnt.hidden = !datos.sin_leer;
+    cnt.textContent = datos.sin_leer > 99 ? '99+' : datos.sin_leer;
+    var bz = document.getElementById('sidebarBuzonCount');
+    if (bz) { bz.hidden = !datos.buzon_sin_leer; bz.textContent = datos.buzon_sin_leer; }
+    var mu = document.getElementById('sidebarMuroCount');
+    if (mu) { mu.hidden = !datos.muros_sin_leer; mu.textContent = datos.muros_sin_leer; }
+    var lista = document.getElementById('notifLista');
+    lista.innerHTML = '';
+    if (!datos.ultimas.length) {
+        var vacio = document.createElement('p'); vacio.className = 'notif-vacio'; vacio.textContent = 'Sin notificaciones.';
+        lista.appendChild(vacio);
+    }
+    datos.ultimas.forEach(function(n) {
+        var a = document.createElement('a');
+        a.className = 'notif-item' + (n.leida ? '' : ' notif-no-leida');
+        a.href = n.url || '/notificaciones/';
+        var t = document.createElement('span'); t.className = 'notif-texto'; t.textContent = n.texto;
+        var f = document.createElement('span'); f.className = 'notif-fecha'; f.textContent = n.creada_en.slice(8, 10) + '/' + n.creada_en.slice(5, 7) + ' ' + n.creada_en.slice(11, 16);
+        var tipo = document.createElement('span');
+        tipo.className = 'notif-tipo notif-tipo-' + (['nota', 'recordatorio', 'tarea_asignada', 'muro', 'aviso', 'vigia'].indexOf(n.tipo) >= 0 ? n.tipo : 'otro');
+        var cuerpo = document.createElement('span'); cuerpo.className = 'notif-cuerpo';
+        cuerpo.appendChild(t); cuerpo.appendChild(f);
+        a.appendChild(tipo); a.appendChild(cuerpo); lista.appendChild(a);
+    });
+}
+function _notifAvisar(n) {
+    if (_notifLeer('notifSinEmergentes') !== '1') {
+        var toast = document.getElementById('notifToast');
+        toast.textContent = n.texto;
+        toast.href = n.url || '/notificaciones/';
+        toast.hidden = false;
+        clearTimeout(window._notifToastTimer);
+        window._notifToastTimer = setTimeout(function() { toast.hidden = true; }, 8000);
+    }
+    if (window.Notification && Notification.permission === 'granted' && document.hidden) {
+        var nativa = new Notification({{ app_nombre()|tojson }}, { body: n.texto, tag: 'notif-' + n.id });
+        nativa.onclick = function() { window.focus(); location.href = n.url || '/notificaciones/'; };
+    }
+}
+function notifConsultar() {
+    fetch('/notificaciones/resumen', { headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(datos) {
+            if (!datos) return;
+            _notifPintar(datos);
+            var vista = parseInt(_notifLeer('notifUltimaVista') || '0', 10);
+            if (datos.ultima_id > vista) {
+                // la primera vez en este navegador solo se toma la referencia, sin avisar de todo lo antiguo
+                if (vista > 0) {
+                    var nueva = datos.ultimas.find(function(n) { return !n.leida && n.id > vista; });
+                    if (nueva) _notifAvisar(nueva);
+                }
+                _notifGuardar('notifUltimaVista', String(datos.ultima_id));
+            }
+        })
+        .catch(function() {});
+}
+notifConsultar();
+setInterval(function() { if (!document.hidden || window.Notification && Notification.permission === 'granted') notifConsultar(); }, NOTIF_INTERVALO);
+
+// ── sidebar: expandir/colapsar hitos por proyecto ───────────────────────────
+document.querySelectorAll('.sidebar-toggle-arrow').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var ms = document.getElementById('ms-' + this.dataset.pid);
+        if (ms) { ms.classList.toggle('open'); this.classList.toggle('open'); }
+    });
+});
+
+// closeModal ya existe en varias plantillas hijas (tablero.html, wiki.html,
+// whiteboard.html) para SUS propios modales -- este nombre distinto evita
+// pisar esas definiciones locales cuando ambas conviven en la misma pagina.
+function closeGlobalModal(id) { document.getElementById(id).classList.remove('open'); }
+document.getElementById('milestoneModal').addEventListener('click', function(e) { if (e.target === this) closeGlobalModal('milestoneModal'); });
+document.getElementById('sidebarProjectModal').addEventListener('click', function(e) { if (e.target === this) closeGlobalModal('sidebarProjectModal'); });
+document.getElementById('confirmModal').addEventListener('click', function(e) { if (e.target === this) closeGlobalModal('confirmModal'); });
+
+// modal de confirmacion generico -- reemplaza confirm() nativo en todas las
+// plantillas para acciones destructivas. onConfirm solo se llama si se pulsa
+// el boton de confirmar; opts.danger pinta el boton en rojo.
+function showConfirm(message, onConfirm, opts) {
+    opts = opts || {};
+    document.getElementById('confirmModalTitle').textContent = opts.title || 'Confirmar';
+    document.getElementById('confirmModalText').textContent = message;
+    var okBtn = document.getElementById('confirmModalOkBtn');
+    okBtn.textContent = opts.okText || 'Confirmar';
+    okBtn.className = opts.danger ? 'btn-danger' : 'btn-primary';
+    okBtn.onclick = function() {
+        closeGlobalModal('confirmModal');
+        onConfirm();
+    };
+    document.getElementById('confirmModal').classList.add('open');
+}
+
+function openMilestoneModal(mode, mid, nombre, fecha, completado, pid) {
+    var modal = document.getElementById('milestoneModal');
+    var form = document.getElementById('milestoneModalForm');
+    document.getElementById('msModalTitle').textContent = mode === 'new' ? 'Nuevo hito' : 'Editar hito';
+    form.action = mode === 'new' ? '/hito/nuevo/' + pid + '/' : '/hito/' + mid + '/editar/';
+    document.getElementById('ms_nombre').value = nombre || '';
+    document.getElementById('ms_fecha').value = fecha || '';
+    document.getElementById('ms_completado').checked = !!completado;
+    modal.classList.add('open');
+}
+
+// Guarda "todo el recorrido hasta aqui": la URL actual, mas ?abrir=... si
+// hay un modal soportado abierto en este momento (hoy solo el de tarea del
+// Tablero, #taskModal -- reabrirlo se resuelve en tablero.html leyendo ese
+// mismo parametro al cargar la pagina). Nuevos modales que quieran esto
+// mismo solo tienen que anadir su propio "if" aqui.
+function abrirMarcadorModal() {
+    var url = window.location.pathname + window.location.search;
+    var taskModal = document.getElementById('taskModal');
+    if (taskModal && taskModal.classList.contains('open')) {
+        url += (url.includes('?') ? '&' : '?') + 'abrir=nueva_tarea';
+    }
+    document.getElementById('bk_url').value = url;
+    document.getElementById('bk_titulo').value = document.title.split(' — ')[0];
+    document.getElementById('bookmarkModal').classList.add('open');
+}
+
+function openSidebarProjectModal(mode, pid, nombre, color, tipo, requiereSubtareas, espacioId) {
+    var modal = document.getElementById('sidebarProjectModal');
+    var form = document.getElementById('sidebarProjectModalForm');
+    document.getElementById('spmTitle').textContent = mode === 'new' ? 'Nuevo proyecto' : 'Editar proyecto';
+    form.action = mode === 'new' ? '/proyecto/nuevo/' : '/proyecto/' + pid + '/editar/';
+    document.getElementById('spm_nombre').value = mode === 'new' ? '' : (nombre || '');
+    document.getElementById('spm_tipo_kanban').checked = mode === 'new' || tipo !== 'scrum';
+    document.getElementById('spm_tipo_scrum').checked = mode === 'edit' && tipo === 'scrum';
+    document.getElementById('spm_espacio').value = espacioId || '';
+    document.getElementById('spm_requiereSubtareas').checked = mode === 'edit' && !!requiereSubtareas;
+    var targetColor = mode === 'new' ? null : color;
+    document.querySelectorAll('#spm_colorPicker input').forEach(function(r, i) {
+        r.checked = targetColor ? (r.value === targetColor) : (i === 0);
+    });
+    document.getElementById('spm_excelSection').style.display = mode === 'new' ? '' : 'none';
+    document.getElementById('spm_excel').value = '';
+    modal.classList.add('open');
+}
+
+// ── buscador global de la cabecera ──────────────────────────────────────────
+var searchTimeout;
+document.getElementById('globalSearchInput').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    var q = this.value.trim();
+    if (!q) { document.getElementById('searchResults').innerHTML = ''; return; }
+    searchTimeout = setTimeout(function() {
+        fetch('/buscar/?q=' + encodeURIComponent(q))
+            .then(function(r) {
+                if (!r.ok) throw new Error('http ' + r.status);
+                return r.json();
+            })
+            .then(function(data) {
+                var html = '';
+                if (!data.results.length) {
+                    html = '<div class="sr-empty">Sin resultados</div>';
+                } else {
+                    data.results.forEach(function(r) {
+                        html += '<a class="sr-item" href="/proyecto/' + r.project_id + '/tablero/?abrir_tarea=' + r.task_id + '">' +
+                            '<span class="sr-dot" style="background:' + r.project_color + '"></span>' +
+                            '<span class="sr-title">' + r.title + '</span>' +
+                            '<span class="sr-badges">' +
+                            '<span class="sr-proj">' + r.project_name + '</span>' +
+                            '<span class="sr-status">' + r.status + '</span>' +
+                            '</span></a>';
+                    });
+                }
+                document.getElementById('searchResults').innerHTML = html;
+            })
+            .catch(function() {
+                document.getElementById('searchResults').innerHTML = '<div class="sr-empty">Error al buscar</div>';
+            });
+    }, 300);
+});
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.global-search-wrap')) {
+        document.getElementById('searchResults').innerHTML = '';
+    }
+});
+
+// ── atajos de teclado globales (Ctrl+N/Z/Y, Esc, ?) ──────────────────────────
+// Igual que static/js/board.js::initKeyboard() de la app real -- un unico
+// listener global (aqui en _base.html, cargado en toda pagina que extienda
+// de esta plantilla), que solo actua si la funcion en cuestion existe en la
+// pagina actual (openTaskModal/_undo/_redo/closeModal/closeDetail son
+// locales de cada plantilla, no todas las paginas las definen).
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        if (typeof openTaskModal === 'function') openTaskModal(null);
+    }
+    if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (typeof _undo === 'function') _undo();
+    }
+    if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        if (typeof _redo === 'function') _redo();
+    }
+    if (e.key === 'Escape') {
+        if (typeof closeModal === 'function') {
+            document.querySelectorAll('.modal-overlay.open').forEach(function(m) { closeModal(m.id); });
+        }
+        if (typeof closeDetail === 'function') closeDetail();
+    }
+    if (e.key === '?' && !e.ctrlKey && !e.altKey) {
+        var tag = (e.target.tagName || '').toLowerCase();
+        if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
+            var sm = document.getElementById('shortcutsModal');
+            if (sm) sm.classList.add('open');
+        }
+    }
+});
+</script>
+</body>
+</html>

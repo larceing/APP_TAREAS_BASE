@@ -1,0 +1,735 @@
+{% extends "_base.html" %}
+{% block title %}Nexus — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Tema oscuro propio de Nexus, igual que APP_NEXUS_BUSCADOR/static/index.html
+     -- a proposito escapado a variables --nx-* y aplicado solo dentro de
+     .nexus-page, NUNCA en :root: si se redefiniera --bg/--panel/--muted/...
+     (que ya existen como tokens globales de main.css) se recolorearia
+     tambien la cabecera/sidebar compartidos de _base.html mientras se ve
+     esta pagina, no solo el contenido de Nexus. */
+  .nexus-page {
+    /* Mismos tokens que el resto de la app (main.css) en vez de la paleta
+       oscura original -- alias, no valores nuevos, para que si el tema de
+       la app cambia algun dia esto se mueva solo con el. */
+    --nx-bg: var(--bg); --nx-panel: var(--panel); --nx-panel2: var(--bg); --nx-border: var(--border); --nx-text: var(--ink);
+    --nx-muted: var(--muted); --nx-accent: var(--color-blue); --nx-accent2: var(--color-green); --nx-accent3: var(--color-amber);
+    background: var(--nx-bg);
+    color: var(--nx-text); font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    min-height: 100%; padding: 24px 24px 90px; flex: 1;
+  }
+  .nx-wrap { max-width: 880px; margin: 0 auto; }
+  /* Cabecera de pagina -- mismo patron que .project-header de main.css
+     (icono en caja translucida + titulo 19px/800 + descripcion en blanco
+     sobre un fondo de color, shadow-sm, radius de la app) en vez del
+     wordmark enorme con degradado estilo landing de SaaS que traia
+     APP_NEXUS_BUSCADOR original. */
+  .nx-header { display:flex; align-items:center; gap:14px; margin-bottom: 20px; padding: 18px 22px;
+    border-radius: var(--radius); box-shadow: var(--shadow-sm);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--nx-accent) 100%, black 32%) 0%, var(--nx-accent) 100%); }
+  .nx-header-icon { width: 36px; height: 36px; border-radius: var(--radius-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.2); color: #fff; }
+  .nx-header-title { font-size: 19px; font-weight: 800; color: #fff; line-height: 1.3; }
+  .nx-header-desc { font-size: 13px; color: rgba(255,255,255,.85); margin-top: 2px; }
+  .nx-searchbox { display:flex; gap:10px; background: var(--nx-panel); border: 1px solid var(--nx-border);
+    border-radius: var(--radius); padding: 5px; box-shadow: var(--shadow-sm); }
+  .nx-searchbox input { flex:1; background: transparent; border: none; outline: none; color: var(--nx-text);
+    font-size: 15px; padding: 11px 14px; }
+  .nx-searchbox button { background: var(--nx-accent); border: none; color: white; font-weight: 600;
+    padding: 0 22px; border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; }
+  .nx-searchbox button:hover { filter: brightness(1.12); }
+  .nx-stats { text-align:center; color: var(--nx-muted); font-size: 12px; margin-top: 14px; }
+  .nx-stats b { color: var(--nx-accent2); font-weight: 700; }
+  .nx-chips-card { max-width: 620px; margin: 18px auto 0; background: var(--nx-panel); border: 1px solid var(--nx-border);
+    border-radius: var(--radius); padding: 14px 18px; box-shadow: var(--shadow-sm); }
+  .nx-chips-label { font-size: 10.5px; text-transform:uppercase; letter-spacing:.08em; color: var(--nx-muted);
+    text-align:center; margin-bottom: 11px; }
+  .nx-chips { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .nx-chip { font-size: 12px; color: var(--nx-muted); border: 1px solid var(--nx-border); border-radius: 20px;
+    padding: 5px 13px; cursor: pointer; background: var(--nx-panel2); }
+  .nx-chip:hover { border-color: var(--nx-accent); color: var(--nx-text); }
+  .nx-relacionados { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin: 8px 0 4px; }
+  .nx-relacionados .nx-chip { padding: 3px 10px; text-decoration: none; cursor: default; }
+  .nx-relacionados a.nx-chip { cursor: pointer; }
+  .nx-relacionados .nx-rel-sistema { color: var(--nx-accent); border-color: var(--nx-accent); }
+  .nx-rel-label { font-size: 12px; color: var(--nx-muted); margin-right: 2px; }
+  .nx-ficha-link { color: inherit; text-decoration: none; }
+  .nx-ficha-link:hover { text-decoration: underline; }
+
+  .nx-dev-toggle-wrap { text-align:center; margin-top: 14px; }
+  .nx-dev-toggle { display:inline-block; font-size: 11.5px; color: var(--nx-muted); cursor:pointer;
+    border: 1px solid var(--nx-border); border-radius: 20px; padding: 5px 14px; background: var(--nx-panel); }
+  .nx-dev-toggle:hover { border-color: var(--nx-accent3); color: var(--nx-text); }
+  .nx-dev-toggle.activo { color: var(--nx-text); background: var(--nx-accent3); border-color: var(--nx-accent3); font-weight: 600; }
+
+  .nx-section { margin-top: 34px; }
+  /* Mismo patron que .column-header/.column-title/.column-count del
+     Tablero (tablero.html) -- barra de acento + titulo en negrita +
+     contador en pastilla, la forma "etiqueta + numero" que de verdad se ve
+     en el resto de la app, no la etiqueta pequeña en mayusculas de antes. */
+  .nx-section-head { display:flex; align-items:center; gap:8px; margin-bottom: 14px; }
+  .nx-section-accent { width: 5px; height: 20px; border-radius: 3px; flex-shrink: 0; background: var(--nx-accent); }
+  .nx-section-title { font-weight: 700; font-size: 14px; color: var(--nx-text); }
+  .nx-section-count { font-size: 12px; color: var(--nx-muted); background: var(--nx-bg); padding: 2px 8px; border-radius: 10px; }
+
+  .nx-proyecto-card { background: var(--nx-panel); border: 1px solid var(--nx-border);
+    border-left: 3px solid var(--nx-accent); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 12px; }
+  .nx-proyecto-top { display:flex; justify-content:space-between; align-items:flex-start; gap: 12px; }
+  .nx-proyecto-nombre { font-size: 17px; font-weight: 700; }
+  .nx-proyecto-alias { color: var(--nx-muted); font-size: 12px; margin-top: 2px; }
+  .nx-proyecto-resumen { color: #334155; font-size: 13.5px; line-height: 1.55; margin-top: 10px;
+    max-height: 220px; overflow-y: auto; }
+  .nx-estado-badge, .nx-rol-badge, .nx-badge { display: inline-block; width: 128px; overflow: hidden; text-overflow: ellipsis;
+    text-align: center; cursor: pointer; vertical-align: bottom; }
+  .nx-estado-badge.expandido, .nx-rol-badge.expandido, .nx-badge.expandido { width: auto; white-space: normal; word-break: break-word; }
+  .nx-estado-badge { font-size: 10px; text-transform:uppercase; letter-spacing:.5px; color: var(--nx-accent3);
+    border: 1px solid var(--nx-accent3); border-radius: 6px; padding: 2px 8px; white-space:nowrap; }
+  .nx-rol-badge { font-size: 10px; text-transform:uppercase; letter-spacing:.5px;
+    border: 1px solid; border-radius: 6px; padding: 2px 8px; white-space:nowrap; background: rgba(0,0,0,.04); }
+  .nx-codigo-ref { font-family: 'Courier New', monospace; font-size: 12px; color: var(--nx-muted);
+    background: rgba(0,0,0,.05); border-radius: var(--radius-sm); padding: 1px 6px; margin-left: 4px; }
+  .nx-sugerencia { font-size: 13px; color: var(--nx-accent3); background: rgba(255,180,84,.08);
+    border: 1px solid rgba(255,180,84,.3); border-radius: var(--radius-sm); padding: 8px 14px; margin-top: 18px; }
+  .nx-tech-list { display:flex; flex-wrap:wrap; gap:6px; margin-top: 10px; }
+  .nx-tech-chip { font-size: 10.5px; color: var(--nx-accent); background: rgba(91,140,255,.10);
+    border: 1px solid rgba(91,140,255,.3); border-radius: var(--radius-sm); padding: 2px 8px; }
+  .nx-dev-box { display:none; margin-top: 8px; font-size: 12px; line-height: 1.55; color: #334155;
+    background: rgba(126,226,184,.06); border: 1px solid rgba(126,226,184,.25); border-radius: 8px;
+    padding: 10px 12px; white-space: pre-line; font-family: 'Courier New', monospace;
+    max-height: 260px; overflow-y: auto; }
+  .nx-dev-box.open { display:block; }
+  .nx-ubic-toggle { margin-top: 12px; font-size: 12px; color: var(--nx-accent); cursor: pointer; user-select:none; display:inline-block; }
+  .nx-ubic-toggle:hover { text-decoration: underline; }
+  .nx-ubic-list { margin-top: 10px; display:none; flex-direction:column; gap:6px; }
+  .nx-ubic-list.open { display:flex; }
+
+  .nx-cred-list { margin-top: 10px; display:none; flex-direction:column; gap:8px; }
+  .nx-cred-list.open { display:flex; }
+  .nx-cred-unlock { display:flex; gap:6px; }
+  .nx-cred-unlock input { flex:1; background: var(--nx-panel2); border: 1px solid var(--nx-border); border-radius: 6px;
+    padding: 7px 9px; color: var(--nx-text); font-size: 12.5px; }
+  .nx-cred-unlock button { background: var(--nx-accent3); border:none; border-radius: 6px; padding: 7px 14px;
+    color: #1a1200; font-weight: 600; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  .nx-cred-item { background: rgba(255,180,84,.05); border: 1px solid rgba(255,180,84,.25); border-radius: var(--radius-sm); padding: 9px 12px; }
+  .nx-cred-header { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .nx-cred-etiqueta { font-size: 12.5px; font-weight: 600; color: var(--nx-accent3); }
+  .nx-cred-usuario { font-size: 11px; color: var(--nx-muted); }
+  .nx-cred-notas { font-size: 11px; color: var(--nx-muted); margin-top: 4px; }
+  .nx-cred-borrar { margin-left: auto; cursor: pointer; opacity: .5; font-size: 12px; }
+  .nx-cred-borrar:hover { opacity: 1; }
+  .nx-cred-resultado { margin-top: 6px; font-family: 'Courier New', monospace; font-size: 12.5px;
+    word-break: break-all; min-height: 0; }
+  .nx-cred-resultado.ok { color: var(--nx-accent2); }
+  .nx-cred-resultado.error { color: #ff7a9c; font-family: inherit; }
+  .nx-cred-borrar-confirm { display:none; gap:6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .nx-cred-borrar-confirm.open { display:flex; }
+  .nx-cred-borrar-confirm input { background: var(--nx-panel2); border: 1px solid var(--nx-border); border-radius: 6px;
+    padding: 6px 8px; color: var(--nx-text); font-size: 12px; flex: 1; min-width: 120px; }
+  .nx-cred-borrar-confirm button { border:none; border-radius: 6px; padding: 6px 10px; font-size: 11.5px;
+    font-weight: 600; cursor: pointer; background: #ff7a9c; color: #2a0010; }
+  .nx-cred-borrar-confirm button.ghost { background: transparent; color: var(--nx-muted); border: 1px solid var(--nx-border); }
+  .nx-cred-toggle-nueva { margin-top: 4px; font-size: 11.5px; color: var(--nx-accent); cursor: pointer; user-select: none; }
+  .nx-cred-toggle-nueva:hover { text-decoration: underline; }
+  .nx-cred-form-nueva { display: none; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .nx-cred-form-nueva.open { display: flex; }
+  .nx-cred-form-nueva input { background: var(--nx-panel2); border: 1px solid var(--nx-border); border-radius: 6px;
+    padding: 6px 8px; color: var(--nx-text); font-size: 12px; }
+  .nx-cred-form-nueva button { background: var(--nx-accent); border:none; border-radius: 6px; padding: 7px 12px;
+    color: #fff; font-weight: 600; font-size: 12px; cursor: pointer; margin-top: 2px; }
+  .nx-ubic-item { font-size: 12px; color: var(--nx-muted); background: rgba(0,0,0,.03); border: 1px solid var(--nx-border);
+    border-radius: var(--radius-sm); padding: 6px 10px; word-break: break-all; }
+  .nx-ubic-item .nx-tag { color: var(--nx-accent2); font-weight:600; margin-right: 6px; text-transform:uppercase; font-size:10px; }
+
+  .nx-card { background: var(--nx-panel); border: 1px solid var(--nx-border); border-radius: var(--radius); padding: 14px 16px;
+    margin-bottom: 10px; transition: border-color .15s; }
+  .nx-card:hover { border-color: var(--nx-accent); }
+  .nx-card-top { display:flex; justify-content:space-between; align-items:baseline; gap: 10px; }
+  .nx-card-title { font-weight: 600; font-size: 14.5px; }
+  .nx-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--nx-accent2);
+    border: 1px solid var(--nx-accent2); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+  .nx-card-ruta { color: var(--nx-muted); font-size: 11.5px; margin-top: 4px; word-break: break-all; }
+  .nx-btn-copiar { margin-left: 6px; font-size: 11px; cursor: pointer; color: var(--nx-accent2); background: none;
+    border: 1px solid var(--nx-accent2); border-radius: 6px; padding: 1px 6px; }
+  .nx-card-body { display: flex; gap: 14px; align-items: flex-start; }
+  .nx-card-preview { flex: 0 0 144px; width: 144px; height: 180px; display: flex; align-items: center; justify-content: center; }
+  .nx-card-main { flex: 1; min-width: 0; }
+  .nx-card-preview-img { width: 144px; height: 180px; object-fit: cover; border-radius: var(--radius-sm);
+    border: 1px solid var(--nx-border); background: #fff; }
+  .nx-file-icon { width: 120px; height: 150px; border-radius: var(--radius-sm); position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    color: #fff; font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+  .nx-file-icon::before { content: ''; position: absolute; top: 0; right: 0; width: 0; height: 0;
+    border-style: solid; border-width: 0 27px 27px 0; border-color: transparent rgba(255,255,255,.35) transparent transparent; }
+  .nx-company-badge { width: 70px; height: 70px; border-radius: 50%; background: #fff;
+    padding: 7px; box-sizing: border-box; box-shadow: var(--shadow-sm); object-fit: contain; }
+  .nx-card-extracto { color: #334155; font-size: 12.5px; margin-top: 8px; line-height: 1.5; white-space: pre-line;
+    max-height: 140px; overflow-y: auto; }
+  .nx-card-proyecto { display:inline-block; margin-top:8px; font-size: 11px; color: var(--nx-accent);
+    background: rgba(91,140,255,.12); border-radius: 6px; padding: 2px 8px; }
+  .nx-tecnologia-list { display:flex; flex-direction:column; gap:10px; }
+  .nx-tecnologia-item { background: var(--nx-panel); border: 1px solid var(--nx-border); border-radius: var(--radius); padding: 14px 18px; }
+  .nx-tecnologia-header { display:flex; justify-content:space-between; align-items:baseline; }
+  .nx-tecnologia-nombre { font-size: 14.5px; font-weight: 700; color: var(--nx-text); }
+  .nx-tecnologia-count { font-size: 11px; color: var(--nx-accent2); font-weight: 600; }
+  .nx-tecnologia-proyectos { display:flex; flex-wrap:wrap; gap:6px; margin-top: 10px; }
+  .nx-empty { text-align:center; color: var(--nx-muted); margin-top: 60px; font-size: 14px; }
+  .nx-rel { color: var(--nx-muted); font-size: 10.5px; }
+
+  /* Boton flotante "volver arriba" -- oculto hasta que hay scroll de verdad
+     (ver nxToggleTopBtn), para no estorbar en busquedas cortas que caben
+     en una pantalla. */
+  .nx-top-btn {
+    position: fixed; right: 28px; bottom: 28px; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--nx-accent); color: #fff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-md); opacity: 0; pointer-events: none;
+    transform: translateY(8px); transition: opacity .15s, transform .15s; z-index: 50;
+  }
+  .nx-top-btn.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .nx-top-btn:hover { filter: brightness(1.1); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="nexus-page">
+<div class="nx-wrap">
+  <div class="nx-header">
+    <div class="nx-header-icon">{{ icon("search", 18) }}</div>
+    <div>
+      <div class="nx-header-title">Nexus</div>
+      <div class="nx-header-desc">Catálogo interno de documentación — ES Group</div>
+    </div>
+  </div>
+  <div class="nx-searchbox">
+    <input id="nx_q" type="text" placeholder="Busca un proyecto, sede, politica... (ej. backup, vpn, servidor)" autofocus>
+    <button onclick="nxBuscar()">Buscar</button>
+  </div>
+  <div class="nx-stats" id="nx_stats">cargando estadisticas...</div>
+  <div class="nx-chips-card">
+    <div class="nx-chips-label">Busquedas frecuentes</div>
+    <div class="nx-chips" id="nx_chips"></div>
+  </div>
+  {% if es_it() %}
+  <div class="nx-dev-toggle-wrap">
+    <span class="nx-dev-toggle" id="nx_devToggle" onclick="nxToggleModoDev()">&#128295; Busqueda dev (codigo/tecnico)</span>
+  </div>
+  {% endif %}
+  <div id="nx_results"></div>
+</div>
+<button type="button" class="nx-top-btn" id="nx_topBtn" onclick="nxScrollTop()" title="Volver arriba">{{ icon("chevron-up", 20) }}</button>
+</div>
+<script>
+const nxPalabrasClave = ['riesgo','incidencias','contactos','rgpd','backup','vpn'];
+
+async function nxCargarStats() {
+  const r = await fetch('/nexus/stats'); const s = await r.json();
+  document.getElementById('nx_stats').innerHTML =
+    `<b>${s.archivos}</b> archivos &middot; <b>${s.carpetas}</b> carpetas &middot; <b>${s.paginas}</b> paginas wiki &middot; <b>${s.proyectos}</b> proyectos`;
+  document.getElementById('nx_chips').innerHTML = nxPalabrasClave.map(x => `<span class="nx-chip" onclick="nxBuscarTexto('${x}')">${x}</span>`).join('');
+}
+
+function nxEsc(s) { return (s ?? '').toString(); }
+
+const NX_ROL_COLOR = {
+  tecnico: '#5b8cff',
+  infraestructura: '#ffb454',
+  negocio: '#7ee2b8',
+  direccion: '#ff7a9c',
+};
+
+function nxRolBadge(rol) {
+  if (!rol) return '';
+  const color = NX_ROL_COLOR[rol] || '#8b93a7';
+  return `<span class="nx-rol-badge" title="${nxEsc(rol)}" onclick="this.classList.toggle('expandido')" style="color:${color};border-color:${color}">${nxEsc(rol)}</span>`;
+}
+
+const NX_REL_TIPO = { sistema: 'Sistema', proyecto: 'Tablero', empresa: 'Empresa', wiki_pagina: 'Wiki',
+                      nota: 'Nota', whiteboard: 'Pizarra' };
+
+function nxRenderProyecto(p, idx) {
+  const ubs = p.ubicaciones || [];
+  const ubHtml = ubs.map(u => `<div class="nx-ubic-item"><span class="nx-tag">${u.tipo}</span>${nxEsc(u.ruta)}${u.tipo_documento ? ' — ' + u.tipo_documento : ''}</div>`).join('');
+  return `
+    <div class="nx-proyecto-card">
+      <div class="nx-proyecto-top">
+        <div>
+          <div class="nx-proyecto-nombre">${p.wiki_url ? `<a href="${p.wiki_url}" class="nx-ficha-link">${nxEsc(p.nombre)}</a>` : nxEsc(p.nombre)} ${p.codigo ? `<span class="nx-codigo-ref">${nxEsc(p.codigo)}</span>` : ''}</div>
+          ${p.alias ? `<div class="nx-proyecto-alias">tambien: ${nxEsc(p.alias)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          ${nxRolBadge(p.rol)}
+          ${p.estado ? `<span class="nx-estado-badge" title="${nxEsc(p.estado)}" onclick="this.classList.toggle('expandido')">${nxEsc(p.estado)}</span>` : ''}
+        </div>
+      </div>
+      <div class="nx-proyecto-resumen">${nxEsc(p.resumen)}</div>
+      ${p.tecnologias ? `<div class="nx-tech-list">${nxEsc(p.tecnologias).split(',').map(t => `<span class="nx-tech-chip">${t.trim()}</span>`).join('')}</div>` : ''}
+      ${(p.relacionados || []).length ? `<div class="nx-relacionados"><span class="nx-rel-label">Relacionado:</span>${p.relacionados.map(r => r.url
+        ? `<a class="nx-chip nx-rel-${r.tipo}" href="${r.url}">${NX_REL_TIPO[r.tipo] || ''} · ${nxEsc(r.nombre)}</a>`
+        : `<span class="nx-chip nx-rel-${r.tipo}">${NX_REL_TIPO[r.tipo] || ''} · ${nxEsc(r.nombre)}</span>`).join('')}</div>` : ''}
+      ${p.info_desarrollador ? `<div class="nx-ubic-toggle" onclick="nxToggleDev(${idx})">&#128187; Info para desarrolladores</div>
+      <div class="nx-dev-box" id="nx-dev-${idx}">${nxEsc(p.info_desarrollador)}</div>` : ''}
+      ${ubs.length ? `<div class="nx-ubic-toggle" onclick="nxToggleUbic(${idx})">&#9660; ${ubs.length} ubicacion(es) / archivo(s) relacionado(s)</div>
+      <div class="nx-ubic-list" id="nx-ubic-${idx}">${ubHtml}</div>` : ''}
+      {% if es_it() %}
+      <div class="nx-ubic-toggle" onclick="nxToggleCredenciales(${idx}, '${p.id}')">&#128274; Credenciales${p.n_credenciales ? ' (' + p.n_credenciales + ')' : ''}</div>
+      <div class="nx-cred-list" id="nx-cred-${idx}"></div>
+      {% endif %}
+    </div>
+  `;
+}
+
+window.__nxCredIds = {};
+
+async function nxCargarCredenciales(idx, proyectoId) {
+  const box = document.getElementById('nx-cred-' + idx);
+  const r = await fetch('/nexus/proyecto/' + proyectoId + '/credenciales');
+  const lista = await r.json();
+  window.__nxCredIds[idx] = lista.map(c => c.id);
+
+  const itemsHtml = lista.map(c => `
+    <div class="nx-cred-item">
+      <div class="nx-cred-header">
+        <span class="nx-cred-etiqueta">${nxEsc(c.etiqueta)}</span>
+        ${c.usuario ? `<span class="nx-cred-usuario">${nxEsc(c.usuario)}</span>` : ''}
+        <span class="nx-cred-borrar" onclick="nxPedirBorrado('${c.id}')" title="Borrar">&#128465;</span>
+      </div>
+      ${c.notas ? `<div class="nx-cred-notas">${nxEsc(c.notas)}</div>` : ''}
+      <div class="nx-cred-resultado" id="nx-cred-resultado-${c.id}"></div>
+      <div class="nx-cred-borrar-confirm" id="nx-cred-borrar-${c.id}">
+        <input type="password" placeholder="contraseña para confirmar" id="nx-cred-borrar-pass-${c.id}"
+          onkeydown="if(event.key==='Enter') nxConfirmarBorrado('${c.id}', ${idx}, '${proyectoId}')">
+        <button onclick="nxConfirmarBorrado('${c.id}', ${idx}, '${proyectoId}')">Confirmar borrado</button>
+        <button class="ghost" onclick="document.getElementById('nx-cred-borrar-${c.id}').classList.remove('open')">Cancelar</button>
+        <div class="nx-cred-resultado error" id="nx-cred-borrar-error-${c.id}"></div>
+      </div>
+    </div>
+  `).join('') || '<div class="nx-empty" style="margin:6px 0;">Sin credenciales todavía</div>';
+
+  box.innerHTML = `
+    <div class="nx-cred-unlock">
+      <input type="password" placeholder="contraseña" id="nx-cred-unlock-pass-${idx}"
+        onkeydown="if(event.key==='Enter') nxVerTodas(${idx}, '${proyectoId}')">
+      <button onclick="nxVerTodas(${idx}, '${proyectoId}')">Ver todas</button>
+    </div>
+    ${itemsHtml}
+    <div class="nx-cred-toggle-nueva" onclick="nxToggleFormNueva(${idx})">+ Añadir credencial</div>
+    <div class="nx-cred-form-nueva" id="nx-cred-form-nueva-${idx}">
+      <input type="text" placeholder="Nombre (ej. Admin SRVCYBER)" id="nx-cred-new-etiqueta-${idx}">
+      <input type="text" placeholder="Usuario" id="nx-cred-new-usuario-${idx}">
+      <input type="text" placeholder="Notas" id="nx-cred-new-notas-${idx}">
+      <input type="password" placeholder="Contraseña o secreto a guardar" id="nx-cred-new-secreto-${idx}">
+      <input type="password" placeholder="Contraseña para verlo después" id="nx-cred-new-password-${idx}">
+      <button onclick="nxCrearCredencial(${idx}, '${proyectoId}')">Guardar cifrado</button>
+      <div class="nx-cred-resultado" id="nx-cred-new-resultado-${idx}"></div>
+    </div>
+  `;
+}
+
+function nxToggleFormNueva(idx) {
+  document.getElementById('nx-cred-form-nueva-' + idx).classList.toggle('open');
+}
+
+async function nxToggleCredenciales(idx, proyectoId) {
+  const box = document.getElementById('nx-cred-' + idx);
+  const abierta = box.classList.toggle('open');
+  if (abierta) await nxCargarCredenciales(idx, proyectoId);
+}
+
+async function nxVerTodas(idx, proyectoId) {
+  const password = document.getElementById('nx-cred-unlock-pass-' + idx).value;
+  const ids = window.__nxCredIds[idx] || [];
+  for (const credId of ids) {
+    const out = document.getElementById('nx-cred-resultado-' + credId);
+    out.textContent = '';
+    out.className = 'nx-cred-resultado';
+    try {
+      const r = await fetch('/nexus/credencial/' + credId + '/ver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+        body: JSON.stringify({ password }),
+      });
+      const data = await r.json();
+      if (r.ok && data.ok) { out.textContent = data.valor; out.className = 'nx-cred-resultado ok'; }
+    } catch (e) {}
+  }
+}
+
+function nxPedirBorrado(credId) {
+  document.getElementById('nx-cred-borrar-' + credId).classList.add('open');
+}
+
+async function nxConfirmarBorrado(credId, idx, proyectoId) {
+  const password = document.getElementById('nx-cred-borrar-pass-' + credId).value;
+  const errorEl = document.getElementById('nx-cred-borrar-error-' + credId);
+  const r = await fetch('/nexus/credencial/' + credId + '/borrar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+    body: JSON.stringify({ password }),
+  });
+  const data = await r.json();
+  if (r.ok && data.ok) {
+    await nxCargarCredenciales(idx, proyectoId);
+  } else {
+    errorEl.textContent = 'Contraseña incorrecta';
+  }
+}
+
+async function nxCrearCredencial(idx, proyectoId) {
+  const etiqueta = document.getElementById('nx-cred-new-etiqueta-' + idx).value.trim();
+  const usuario = document.getElementById('nx-cred-new-usuario-' + idx).value.trim();
+  const notas = document.getElementById('nx-cred-new-notas-' + idx).value.trim();
+  const secreto = document.getElementById('nx-cred-new-secreto-' + idx).value;
+  const password = document.getElementById('nx-cred-new-password-' + idx).value;
+  const out = document.getElementById('nx-cred-new-resultado-' + idx);
+  if (!etiqueta || !secreto || !password) {
+    out.textContent = 'Faltan campos: nombre, secreto y contraseña son obligatorios';
+    out.className = 'nx-cred-resultado error';
+    return;
+  }
+  out.textContent = 'guardando...';
+  out.className = 'nx-cred-resultado';
+  try {
+    const r = await fetch('/nexus/proyecto/' + proyectoId + '/credenciales', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('gestor_csrftoken') },
+      body: JSON.stringify({ etiqueta, usuario: usuario || null, notas: notas || null, password, secreto }),
+    });
+    if (!r.ok) throw new Error('fallo al guardar');
+    await nxCargarCredenciales(idx, proyectoId);
+  } catch (e) {
+    out.textContent = 'Error al guardar';
+    out.className = 'nx-cred-resultado error';
+  }
+}
+
+function nxToggleDev(idx) {
+  document.getElementById('nx-dev-' + idx).classList.toggle('open');
+}
+
+function nxToggleUbic(idx) {
+  document.getElementById('nx-ubic-' + idx).classList.toggle('open');
+}
+
+const NX_EXT_COLOR = {
+  docx:'#2b6cb0', doc:'#2b6cb0', rtf:'#2b6cb0',
+  xlsx:'#2f855a', xls:'#2f855a', xlsm:'#2f855a', csv:'#2f855a',
+  pdf:'#c53030',
+  pptx:'#dd6b20', ppt:'#dd6b20',
+  png:'#805ad5', jpg:'#805ad5', jpeg:'#805ad5', gif:'#805ad5', bmp:'#805ad5', svg:'#805ad5',
+  msg:'#3182ce', eml:'#3182ce', mp4:'#3182ce',
+  zip:'#718096', rar:'#718096',
+  md:'#4a5568', txt:'#4a5568', log:'#4a5568',
+  drawio:'#0d9488',
+  py:'#1a202c', js:'#1a202c', ts:'#1a202c', php:'#1a202c', sql:'#1a202c', json:'#1a202c',
+  xml:'#1a202c', html:'#1a202c', htm:'#1a202c', css:'#1a202c', sh:'#1a202c', ps1:'#1a202c',
+  yml:'#1a202c', yaml:'#1a202c', ini:'#1a202c', cfg:'#1a202c', item:'#1a202c',
+};
+
+function nxCompanyLogo(ruta) {
+  return {{ app_logo()|tojson }};
+}
+
+function nxFileIcon(nombre, extension, ruta) {
+  let ext = (extension || '').replace('.', '').toLowerCase();
+  if (!ext) { const m = /\.([a-z0-9]+)$/i.exec(nombre || ''); ext = m ? m[1].toLowerCase() : ''; }
+  const color = NX_EXT_COLOR[ext] || '#3a3f52';
+  const label = ext ? ext.toUpperCase().slice(0, 4) : '?';
+  const logo = nxCompanyLogo(ruta);
+  return `<div class="nx-file-icon" style="background:${color}"><img class="nx-company-badge" src="${logo}" alt="">${nxEsc(label)}</div>`;
+}
+
+function nxCopiarRuta(btn) {
+  navigator.clipboard.writeText(btn.dataset.ruta).then(() => {
+    btn.textContent = '✔ Copiada';
+    setTimeout(() => { btn.textContent = '📋 Copiar ruta'; }, 1500);
+  });
+}
+
+function nxRenderArchivo(item) {
+  const tipo = nxEsc(item.tipo_documento) || 'archivo';
+  const iconoFallback = nxFileIcon(item.nombre, item.extension, item.ruta).replace(/"/g, '&quot;');
+  const preview = item.id != null
+    ? `<img class="nx-card-preview-img" src="/nexus/preview/${item.id}" loading="lazy" alt=""
+         onerror="this.outerHTML='${iconoFallback}'">`
+    : nxFileIcon(item.nombre, item.extension, item.ruta);
+  return `
+    <div class="nx-card">
+      <div class="nx-card-body">
+        <div class="nx-card-preview">${preview}</div>
+        <div class="nx-card-main">
+          <div class="nx-card-top">
+            <div class="nx-card-title">${nxEsc(item.nombre)}</div>
+            <span class="nx-badge" title="${tipo}" onclick="this.classList.toggle('expandido')">${tipo}</span>
+          </div>
+          <div class="nx-card-ruta">${nxEsc(item.ruta)}${item.ruta_completa
+            ? `<button class="nx-btn-copiar" title="Copiar ruta completa" data-ruta="${nxEsc(item.ruta_completa)}"
+                 onclick="nxCopiarRuta(this)">📋 Copiar ruta</button>` : ''}</div>
+          ${item.extracto ? `<div class="nx-card-extracto">${nxEsc(item.extracto)}</div>` : ''}
+          <div>
+            ${item.proyecto ? `<span class="nx-card-proyecto">proyecto: ${nxEsc(item.proyecto)}</span>` : ''}
+            ${item.fecha_creacion ? `<span class="nx-rel"> &nbsp;creado ${nxEsc(item.fecha_creacion)}</span>` : ''}
+            ${item.fecha_modificacion ? `<span class="nx-rel"> &nbsp;modificado ${nxEsc(item.fecha_modificacion)}</span>` : ''}
+            <span class="nx-rel"> &nbsp;relevancia ${Number(item.relevancia).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function nxRenderPagina(item) {
+  return `
+    <div class="nx-card">
+      <div class="nx-card-top">
+        <div class="nx-card-title">${nxEsc(item.titulo)}</div>
+        <span class="nx-badge">pagina wiki</span>
+      </div>
+      <div class="nx-card-ruta">carpeta: ${nxEsc(item.carpeta)}</div>
+      ${item.extracto ? `<div class="nx-card-extracto">${nxEsc(item.extracto)}</div>` : ''}
+    </div>
+  `;
+}
+
+function nxRenderTarea(item) {
+  // Mismo destino que el buscador global de la cabecera (_base.html):
+  // ?abrir_tarea=<id> en el tablero de su proyecto abre el panel de
+  // detalle de esa tarea al cargar, aunque no este pintada en esa vista.
+  return `
+    <a class="nx-card" style="display:block;text-decoration:none;color:inherit;border-left:3px solid ${nxEsc(item.project_color)}"
+       href="/proyecto/${item.project_id}/tablero/?abrir_tarea=${item.task_id}">
+      <div class="nx-card-top">
+        <div class="nx-card-title">${nxEsc(item.title)}</div>
+        <span class="nx-badge">${nxEsc(item.status)}</span>
+      </div>
+      <div class="nx-card-ruta">proyecto: ${nxEsc(item.project_name)}</div>
+    </a>
+  `;
+}
+
+function nxRenderPaginaPropia(item) {
+  // Pagina de NUESTRA Wiki (wiki_paginas, db.search_wiki_pages) -- distinta
+  // de nxRenderPagina (esa es la wiki vieja del catalogo externo
+  // confluence_local, un snapshot ajeno). Mismo destino que el enlace de
+  // la Wiki en el sidebar: /proyecto/{id}/wiki/{page_id}/.
+  return `
+    <a class="nx-card" style="display:block;text-decoration:none;color:inherit;border-left:3px solid ${nxEsc(item.project_color)}"
+       href="/proyecto/${item.project_id}/wiki/${item.page_id}/">
+      <div class="nx-card-top">
+        <div class="nx-card-title">${nxEsc(item.icon)} ${nxEsc(item.title)}</div>
+        <span class="nx-badge">wiki</span>
+      </div>
+      <div class="nx-card-ruta">proyecto: ${nxEsc(item.project_name)}</div>
+    </a>
+  `;
+}
+
+function nxSection(titulo, count, bodyHtml) {
+  if (!count) return '';
+  return `<div class="nx-section">
+    <div class="nx-section-head"><span class="nx-section-accent"></span><span class="nx-section-title">${titulo}</span><span class="nx-section-count">${count}</span></div>
+    ${bodyHtml}
+  </div>`;
+}
+
+function nxRenderTecnologias(lista, titulo) {
+  const cont = document.getElementById('nx_results');
+  if (!lista || !lista.length) { cont.innerHTML = '<div class="nx-empty">Sin tecnologías que coincidan</div>'; return; }
+  const filas = lista.map(t => `
+    <div class="nx-tecnologia-item">
+      <div class="nx-tecnologia-header">
+        <span class="nx-tecnologia-nombre">${nxEsc(t.tecnologia)}</span>
+        <span class="nx-tecnologia-count">${t.n_proyectos} proyecto${t.n_proyectos === 1 ? '' : 's'}</span>
+      </div>
+      <div class="nx-tecnologia-proyectos">
+        ${t.proyectos.map(p => `<span class="nx-chip" onclick="nxBuscarTexto('${nxEsc(p.nombre).replace(/'/g, "\\'")}')">${nxEsc(p.nombre)}</span>`).join('')}
+      </div>
+    </div>
+  `).join('');
+  cont.innerHTML = nxSection(titulo || 'Necesidades tecnológicas del catálogo', lista.length, `<div class="nx-tecnologia-list">${filas}</div>`);
+}
+
+async function nxBuscarTexto(t) { document.getElementById('nx_q').value = t; nxBuscar(); }
+
+let nxModoDev = false;
+
+async function nxToggleModoDev() {
+  nxModoDev = !nxModoDev;
+  const el = document.getElementById('nx_devToggle');
+  const input = document.getElementById('nx_q');
+  if (nxModoDev) {
+    el.textContent = '✓ Modo dev activo — volver a busqueda normal';
+    el.classList.add('activo');
+    input.placeholder = 'Busca en codigo/config/logs tecnicos (.py, .sql, .xml, .json...)';
+    const r = await fetch('/nexus/stats-dev'); const s = await r.json();
+    document.getElementById('nx_stats').innerHTML = `modo dev: <b>${s.total}</b> archivos de codigo/tecnicos sin curar`;
+  } else {
+    el.textContent = '\u{1F527} Busqueda dev (codigo/tecnico)';
+    el.classList.remove('activo');
+    input.placeholder = 'Busca un proyecto, sede, politica... (ej. backup, vpn, servidor)';
+    nxCargarStats();
+  }
+  document.getElementById('nx_results').innerHTML = '';
+  if (input.value.trim()) nxBuscar();
+}
+
+async function nxFiltrarTema(clave) {
+  const cont = document.getElementById('nx_results');
+  document.getElementById('nx_q').value = '';
+  cont.innerHTML = '<div class="nx-empty">cargando...</div>';
+  const r = await fetch('/nexus/tema?clave=' + encodeURIComponent(clave));
+  const data = await r.json();
+  if (!data.proyectos?.length) { cont.innerHTML = '<div class="nx-empty">Sin proyectos para este tema</div>'; return; }
+  cont.innerHTML = nxSection('Proyectos de ' + clave.toUpperCase(), data.proyectos.length, data.proyectos.map((p,i)=>nxRenderProyecto(p,i)).join(''));
+}
+
+let nxRequestToken = 0;
+let nxDebounceTimer = null;
+
+const NX_PALABRAS_RESERVADAS_TECNOLOGIAS = ['framework', 'frameworks', 'tecnologias', 'tecnología', 'stack'];
+// Debe coincidir con las claves de TOPICS en app_fastapi/nexus/search.py
+const NX_PALABRAS_RESERVADAS_TEMA = ['ia', 'ai', 'auto', 'erp', 'bi', 'wms', 'mes', 'edi', 'tms', 'rfid', 'sat', 'pda', 'rgpd', 'gdpr', 'contactos', 'seguridad'];
+
+function nxMarcarReservada(palabra) {
+  return `<span style="color:var(--nx-accent3)">${nxEsc(palabra.toUpperCase())}</span>`;
+}
+
+// "-texto" excluye; "/-texto" busca el literal "-texto" (el "/" solo escapa
+// el guion, no forma parte del texto buscado). Sin prefijo, incluye.
+function nxInterpretarFiltro(resto) {
+  if (resto.startsWith('/-')) return { modo: 'incluir', texto: resto.slice(1) };
+  if (resto.startsWith('-')) return { modo: 'excluir', texto: resto.slice(1) };
+  return { modo: 'incluir', texto: resto };
+}
+
+function nxTituloFiltro(modo, texto) {
+  return modo === 'excluir' ? `sin "${nxEsc(texto)}"` : `"${nxEsc(texto)}"`;
+}
+
+async function nxBuscar() {
+  const q = document.getElementById('nx_q').value.trim();
+  const cont = document.getElementById('nx_results');
+  if (!q) { cont.innerHTML = ''; return; }
+  if (q.length < 2) { cont.innerHTML = '<div class="nx-empty">Sigue escribiendo... (minimo 2 letras)</div>'; return; }
+
+  const myToken = ++nxRequestToken;
+  cont.innerHTML = '<div class="nx-empty">buscando...</div>';
+
+  // Primera palabra reservada + resto como filtro literal dentro de esa vista
+  // (ej. "framework ldap", "erp ventas"). Si es una sola palabra reservada,
+  // el resto queda vacio y se ve la vista completa sin filtrar.
+  const partes = q.split(/\s+/);
+  const primera = partes[0].toLowerCase();
+  const resto = partes.slice(1).join(' ').trim();
+  const { modo, texto } = nxInterpretarFiltro(resto);
+  const textoLower = texto.toLowerCase();
+
+  if (NX_PALABRAS_RESERVADAS_TECNOLOGIAS.includes(primera)) {
+    const r = await fetch('/nexus/tecnologias');
+    const data = await r.json();
+    if (myToken !== nxRequestToken) return;
+    let lista = data.tecnologias;
+    if (resto) {
+      lista = lista.filter(t => {
+        const coincide = t.tecnologia.toLowerCase().includes(textoLower);
+        return modo === 'excluir' ? !coincide : coincide;
+      });
+    }
+    const titulo = nxMarcarReservada(primera) + (resto ? ` · ${nxTituloFiltro(modo, texto)}` : '');
+    nxRenderTecnologias(lista, titulo);
+    return;
+  }
+
+  if (NX_PALABRAS_RESERVADAS_TEMA.includes(primera)) {
+    const r = await fetch('/nexus/tema?clave=' + encodeURIComponent(primera));
+    const data = await r.json();
+    if (myToken !== nxRequestToken) return;
+    let proyectos = data.proyectos || [];
+    if (resto) {
+      proyectos = proyectos.filter(p => {
+        const completo = [p.nombre, p.alias, p.tecnologias, p.resumen].filter(Boolean).join(' ').toLowerCase();
+        const coincide = completo.includes(textoLower);
+        return modo === 'excluir' ? !coincide : coincide;
+      });
+    }
+    const titulo = nxMarcarReservada(primera) + (resto ? ` · ${nxTituloFiltro(modo, texto)}` : '');
+    cont.innerHTML = proyectos.length
+      ? nxSection(titulo, proyectos.length, proyectos.map((p, i) => nxRenderProyecto(p, i)).join(''))
+      : '<div class="nx-empty">Sin resultados para ' + titulo + '</div>';
+    return;
+  }
+
+  if (nxModoDev) {
+    let devData;
+    try {
+      const r = await fetch('/nexus/buscar-dev?q=' + encodeURIComponent(q));
+      devData = await r.json();
+    } catch (e) {
+      if (myToken === nxRequestToken) cont.innerHTML = '<div class="nx-empty">Error de conexion con el buscador</div>';
+      return;
+    }
+    if (myToken !== nxRequestToken) return;
+    if (!devData.archivos?.length) { cont.innerHTML = '<div class="nx-empty">Sin resultados tecnicos para "' + q + '"</div>'; return; }
+    cont.innerHTML = nxSection('Archivos de codigo/tecnicos', devData.archivos.length, devData.archivos.map(nxRenderArchivo).join(''));
+    return;
+  }
+
+  let data;
+  try {
+    const r = await fetch('/nexus/search?q=' + encodeURIComponent(q));
+    data = await r.json();
+  } catch (e) {
+    if (myToken === nxRequestToken) cont.innerHTML = '<div class="nx-empty">Error de conexion con el buscador</div>';
+    return;
+  }
+  if (myToken !== nxRequestToken) return;
+
+  const totalHits = (data.proyectos?.length||0) + (data.paginas?.length||0) + (data.archivos?.length||0) + (data.tareas?.length||0) + (data.wiki_propia?.length||0);
+  if (!totalHits) { cont.innerHTML = '<div class="nx-empty">Sin resultados para "' + q + '"</div>'; return; }
+
+  let html = '';
+  if (data.sugerencia && data.sugerencia_tema) {
+    html += `<div class="nx-sugerencia">&#128161; ${nxEsc(data.sugerencia)}
+      <span class="nx-chip" style="margin-left:8px;" onclick="nxFiltrarTema('${nxEsc(data.sugerencia_tema).replace(/'/g, "\\'")}')">Ver proyectos de ${nxEsc(data.sugerencia_tema).toUpperCase()}</span>
+    </div>`;
+  } else if (data.sugerencia && data.sugerencia_termino) {
+    html += `<div class="nx-sugerencia">&#128161; ${nxEsc(data.sugerencia)}
+      <span class="nx-chip" style="margin-left:8px;" onclick="nxBuscarTexto('${nxEsc(data.sugerencia_termino).replace(/'/g, "\\'")}')">${nxEsc(data.sugerencia_termino)}</span>
+    </div>`;
+  }
+  html += nxSection('Nuestras tareas', data.tareas?.length, (data.tareas||[]).map(nxRenderTarea).join(''));
+  html += nxSection('Nuestra Wiki', data.wiki_propia?.length, (data.wiki_propia||[]).map(nxRenderPaginaPropia).join(''));
+  html += nxSection('Proyectos', data.proyectos?.length, (data.proyectos||[]).map((p,i)=>nxRenderProyecto(p,i)).join(''));
+  html += nxSection('Archivos', data.archivos?.length, (data.archivos||[]).map(nxRenderArchivo).join(''));
+  cont.innerHTML = html;
+}
+
+function nxBuscarConDebounce() {
+  clearTimeout(nxDebounceTimer);
+  nxDebounceTimer = setTimeout(nxBuscar, 350);
+}
+
+document.getElementById('nx_q').addEventListener('input', nxBuscarConDebounce);
+document.getElementById('nx_q').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(nxDebounceTimer); nxBuscar(); } });
+nxCargarStats();
+
+// Boton flotante "volver arriba" -- el scroll real de esta app pasa por
+// #appContent (ver main.css::.app-content, overflow-y:auto), no por la
+// ventana, asi que el listener va ahi y no en window.
+(function() {
+  var scrollEl = document.getElementById('appContent') || window;
+  var btn = document.getElementById('nx_topBtn');
+  function onScroll() {
+    var y = scrollEl === window ? window.scrollY : scrollEl.scrollTop;
+    btn.classList.toggle('visible', y > 400);
+  }
+  scrollEl.addEventListener('scroll', onScroll);
+  onScroll();
+})();
+
+function nxScrollTop() {
+  var scrollEl = document.getElementById('appContent') || window;
+  scrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+{% endblock %}

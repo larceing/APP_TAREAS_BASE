@@ -1,0 +1,414 @@
+/* CSS compartido por todas las paginas que extienden _base.html: tokens de
+   diseño + layout de cabecera/sidebar/modales globales. Antes vivia inline
+   en el <style> de _base.html -- se re-descargaba entero en cada
+   navegacion; como archivo estatico, el navegador lo cachea una vez.
+   El CSS especifico de cada pagina sigue inline en su propia plantilla. */
+:root {
+    --bg:            #f5f7fb;
+    --panel:         #ffffff;
+    --ink:           #111827;
+    --muted:         #6b7280;
+    --border:        #d7dde8;
+    --header:        #182235;
+    --selected:      #7c3aed;
+    --sidebar-bg:     #1e2d40;
+    --sidebar-hover:  #29405c;
+    --sidebar-text:  #e2e8f0;
+    --sidebar-muted: #94a3b8;
+    --radius:        8px;
+    --radius-sm:     6px;
+    --gap-tight:     6px;
+    --gap-btn:       10px;
+    --shadow-sm:     0 1px 4px rgba(0,0,0,.08);
+    --shadow-md:     0 4px 12px rgba(0,0,0,.12);
+    --shadow-lg:     0 20px 60px rgba(0,0,0,.2);
+    --color-blue:       #2563eb; --color-blue-dark:  #1d4ed8; --color-blue-tint:  #eff6ff;
+    --color-green:      #16a34a; --color-green-dark: #166534; --color-green-tint: #f0fdf4;
+    --color-amber:      #ca8a04; --color-amber-dark: #854d0e; --color-amber-tint:  #fefce8;
+    --color-orange:     #f97316; --color-orange-dark: #9a3412; --color-orange-tint: #fff7ed;
+    --color-gray:       #6b7280; --color-gray-dark:  #374151; --color-gray-tint:   #f3f4f6;
+    --color-violet:     #7c3aed; --color-violet-dark: #5b21b6; --color-violet-tint: #f5f3ff;
+    --color-red:        #dc2626; --color-red-dark:    #991b1b; --color-red-tint:    #fef2f2;
+    --color-warning:       #eab308;
+    --color-warning-dark:  #a16207;
+    --color-warning-tint:  #fef9c3;
+    /* Alias que wiki.html/wiki_edit.html tambien usan
+       (--accent/--text/--text-muted/--bg-alt) -- mismos valores, no
+       reinventados, para que no queden indefinidas ahi. */
+    --accent:        var(--color-blue);
+    --text:          var(--ink);
+    --text-muted:    var(--muted);
+    --bg-alt:        #f8fafc;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; background: var(--bg); color: var(--ink); }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+
+.app-header {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--header); color: #fff;
+    padding: 10px 18px; height: 52px;
+    position: sticky; top: 0; z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-center { flex: 1; display: flex; justify-content: center; }
+.global-search-wrap { position: relative; width: 380px; }
+.global-search-wrap input {
+    width: 100%; padding: 7px 14px; border-radius: 20px;
+    border: none; background: rgba(255,255,255,.12); color: #fff;
+    font-size: 13px; outline: none; transition: background .15s;
+}
+.global-search-wrap input::placeholder { color: var(--sidebar-muted); }
+.global-search-wrap input:focus { background: rgba(255,255,255,.2); }
+.search-results {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow-md);
+    max-height: 360px; overflow-y: auto; z-index: 200;
+}
+.sr-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background .1s; color: var(--ink); }
+.sr-item:hover { background: var(--bg); }
+.sr-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sr-title { flex: 1; font-weight: 600; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-badges { display: flex; gap: 6px; flex-shrink: 0; }
+.sr-proj { background: #e8edf5; color: var(--muted); padding: 2px 7px; border-radius: 10px; font-size: 11px; }
+.sr-status { background: #f3f4f6; color: var(--muted); padding: 2px 7px; border-radius: 10px; font-size: 11px; }
+.sr-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+@media (max-width: 900px) { .global-search-wrap { width: 200px; } }
+.app-title { font-size: 16px; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.app-logo { height: 16px; filter: brightness(0) invert(1); }
+.header-right { display: flex; align-items: center; align-self: stretch; gap: 8px; margin-left: auto; }
+.header-view-btn {
+    display: inline-flex; align-items: center; align-self: stretch; gap: 6px;
+    margin: -10px 0; padding: 4px 16px; font-size: 13px;
+    font-weight: 600; color: var(--sidebar-muted);
+    background: none; border: none; border-bottom: 3px solid transparent;
+    transition: color .15s, border-color .15s, background .15s;
+}
+.header-view-btn:hover { color: #fff; background: rgba(255,255,255,.08); }
+.header-view-btn.active { color: var(--selected); border-bottom-color: var(--selected); }
+.header-view-btn.placeholder { cursor: default; opacity: .4; }
+.header-view-btn.placeholder:hover { color: var(--sidebar-muted); background: none; }
+.user-menu-wrap { position: relative; align-self: stretch; display: flex; align-items: center; }
+.user-menu-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: none; color: var(--sidebar-text);
+    font-size: 13px; padding: 6px 10px; border-radius: 6px;
+    transition: background .15s;
+}
+.user-menu-btn:hover { background: rgba(255,255,255,.1); }
+.user-menu-dropdown {
+    display: none; position: absolute; right: 0; top: 100%; margin-top: 6px;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); z-index: 200;
+    min-width: 190px; overflow: hidden;
+}
+.user-menu-dropdown.open { display: block; }
+.user-menu-dropdown button, .user-menu-dropdown form, .user-menu-dropdown a { display: block; width: 100%; }
+.user-menu-dropdown button, .user-menu-dropdown a {
+    display: flex; align-items: center; gap: 8px;
+    background: none; border: none; cursor: pointer;
+    padding: 9px 14px; font-size: 13px; color: var(--ink);
+    text-decoration: none; text-align: left;
+}
+.user-menu-dropdown button:hover, .user-menu-dropdown a:hover { background: var(--bg); }
+.user-menu-logout { color: var(--color-red); }
+.user-menu-logout:hover { background: var(--color-red-tint); }
+.user-menu-entorno { font-weight: 700; }
+.user-menu-entorno span { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.user-menu-entorno-real { color: var(--color-green); }
+.user-menu-entorno-real:hover { background: var(--color-green-tint); }
+.user-menu-entorno-prueba { color: var(--color-warning-dark); }
+.user-menu-entorno-prueba:hover { background: var(--color-warning-tint); }
+.entorno-banner {
+    background: var(--color-warning); color: #1e1b0a; font-weight: 700; font-size: 13px;
+    text-align: center; padding: 6px 12px; letter-spacing: .3px;
+}
+/* Mensajes flash (ver flash.py) -- solo success/warning/error tienen color
+   propio porque son los 3 unicos tags que usa esta app. */
+.django-messages { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px 0; }
+.django-message { padding: 8px 14px; border-radius: 6px; font-size: 13px; line-height: 1.4; }
+.django-message-success { background: rgba(22,163,74,.15); color: #16a34a; border: 1px solid rgba(22,163,74,.3); }
+.django-message-warning { background: rgba(234,179,8,.15); color: var(--color-warning-dark); border: 1px solid rgba(234,179,8,.3); }
+.django-message-error   { background: rgba(220,38,38,.15); color: #dc2626; border: 1px solid rgba(220,38,38,.3); }
+.banner-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(220px, 25%), 1fr)); gap: 1px; background: var(--border); }
+.banner-grid > * { min-width: 0; }
+.aviso-banner {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--aviso-color, #ca8a04) 16%, var(--panel));
+    border-left: 3px solid var(--aviso-color, #ca8a04);
+    padding: 2px 16px; font-size: 12px; line-height: 1.6; color: var(--ink); overflow: hidden;
+}
+.aviso-banner-range { color: var(--muted); white-space: nowrap; }
+.banner-tipo-chip {
+    display: inline-flex; align-items: center; color: #fff; font-weight: 700;
+    padding: 1px 8px; border-radius: 9px; font-size: 11px; letter-spacing: .02em;
+    text-transform: uppercase; flex-shrink: 0;
+}
+.alarma-banner {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    background: var(--color-red); color: #fff;
+    padding: 3px 16px; font-size: 12px; font-weight: 600; line-height: 1.6; overflow: hidden;
+}
+.alarma-banner .aviso-banner-range { color: rgba(255,255,255,.8); white-space: nowrap; }
+.sidebar-toggle {
+    background: none; border: none; color: #fff;
+    padding: 4px 8px; border-radius: 4px;
+    transition: background .15s; display: inline-flex; align-items: center;
+}
+.sidebar-toggle:hover { background: rgba(255,255,255,.1); }
+
+/* ── cuerpo: sidebar + contenido ── */
+.app-body { display: flex; height: calc(100vh - 52px - 30px); overflow: hidden; }
+.sidebar {
+    width: 220px; min-width: 220px; background: var(--sidebar-bg);
+    overflow-y: auto; overflow-x: hidden;
+    transition: width .2s ease, min-width .2s ease;
+}
+.sidebar.collapsed { width: 0; min-width: 0; }
+.sidebar-type-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--sidebar-muted);
+    padding: 14px 16px 6px; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+.sidebar-type-label::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.08); }
+.sidebar-global-link {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px 7px 9px; border-left: 3px solid transparent;
+    color: var(--sidebar-text); font-size: 13px; white-space: nowrap;
+}
+.sidebar-global-link:hover { background: var(--sidebar-hover); }
+.sidebar-global-link.active {
+    background: rgba(124,58,237,.15); border-left-color: var(--selected);
+    color: #fff; font-weight: 600;
+}
+/* Fila de un marcador (ver _base.html/marcadores.py) -- mismo look que
+   .sidebar-global-link, pero con el boton de quitar revelado al hover
+   (mismo patron que .sidebar-edit-btn de .sidebar-project-row). */
+.sidebar-marcador-row { display: flex; align-items: center; }
+.sidebar-marcador-row:hover { background: var(--sidebar-hover); }
+.sidebar-marcador-row:hover .sidebar-edit-btn { opacity: 1; }
+.sidebar-marcador-link {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+    padding: 7px 4px 7px 9px; color: var(--sidebar-text); font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar-divider { height: 1px; background: rgba(255,255,255,.08); margin: 8px 16px; }
+.sidebar-placeholder-note { padding: 4px 16px 12px; font-size: 12px; color: var(--sidebar-muted); line-height: 1.5; }
+.sidebar-new-proj {
+    background: none; border: none; color: var(--sidebar-muted);
+    font-size: 13px; padding: 10px 16px; width: 100%; text-align: left;
+    display: flex; align-items: center; gap: 8px; white-space: nowrap;
+    transition: color .15s;
+}
+.sidebar-new-proj:hover { color: var(--sidebar-text); }
+.sidebar-personal-tag { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: .7; }
+
+.sidebar-project { border-bottom: 1px solid rgba(255,255,255,.05); }
+.sidebar-project-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 10px 0 7px; position: relative;
+    border-left: 3px solid transparent;
+    transition: background .15s, border-color .15s;
+}
+.sidebar-project-row:hover { background: var(--sidebar-hover); }
+.sidebar-project.active .sidebar-project-row {
+    background: rgba(124,58,237,.15); border-left-color: var(--selected);
+}
+.sidebar-toggle-arrow {
+    background: none; border: none; color: var(--sidebar-muted);
+    padding: 10px 4px; cursor: pointer; flex-shrink: 0;
+    display: inline-flex; align-items: center;
+}
+.sidebar-toggle-arrow svg { transition: transform .2s ease; }
+.sidebar-toggle-arrow.open svg { transform: rotate(90deg); }
+.sidebar-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sidebar-tipo-icon { color: var(--sidebar-muted); flex-shrink: 0; display: inline-flex; align-items: center; }
+.sidebar-project-name {
+    flex: 1; color: var(--sidebar-text); font-size: 13px;
+    padding: 10px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-project.active .sidebar-project-name { font-weight: 700; }
+.sidebar-edit-btn {
+    background: none; border: none; color: var(--sidebar-muted);
+    font-size: 13px; padding: 4px; opacity: 0; transition: opacity .15s;
+    display: inline-flex; align-items: center; text-decoration: none;
+}
+.sidebar-project-row:hover .sidebar-edit-btn { opacity: 1; }
+
+.sidebar-milestones { display: none; padding-bottom: 4px; }
+.sidebar-milestones.open { display: block; }
+.sidebar-milestone { display: flex; align-items: center; gap: 6px; padding: 4px 24px; }
+.ms-icon { flex-shrink: 0; display: inline-flex; align-items: center; }
+.ms-name {
+    background: none; border: none; color: var(--sidebar-text);
+    font-size: 12px; text-align: left; cursor: pointer; flex: 1; padding: 2px 0;
+}
+.ms-name.done { text-decoration: line-through; color: var(--sidebar-muted); }
+.ms-date { font-size: 11px; color: var(--sidebar-muted); white-space: nowrap; }
+.ms-add-btn {
+    background: none; border: none; color: var(--sidebar-muted);
+    font-size: 12px; padding: 5px 24px; width: 100%; text-align: left;
+    cursor: pointer; transition: color .15s; display: block;
+}
+.ms-add-btn:hover { color: var(--sidebar-text); }
+
+.sidebar-sprint-active { margin: 4px 12px 2px; }
+.sprint-active-link {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 6px;
+    background: rgba(37,99,235,.2); border: 1px solid rgba(37,99,235,.3);
+    transition: background .15s;
+}
+.sprint-active-link:hover { background: rgba(37,99,235,.3); }
+.sprint-icon { font-size: 12px; }
+.sprint-name { flex: 1; font-size: 12px; font-weight: 600; color: var(--sidebar-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sprint-badge { font-size: 10px; font-weight: 700; color: #fff; background: #2563eb; padding: 1px 6px; border-radius: 8px; flex-shrink: 0; }
+.sidebar-sprints-link { display: block; color: var(--sidebar-muted); font-size: 11px; padding: 4px 24px; transition: color .15s; }
+.sidebar-sprints-link:hover { color: var(--sidebar-text); }
+
+.app-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; transition: all .2s ease; }
+
+/* ── pestañas de proyecto (compartidas por todas las paginas de un
+   proyecto, ver _project_tabs.html) ── */
+.project-tabs { display: flex; gap: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 24px; flex-shrink: 0; overflow-x: auto; }
+.project-tab { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.project-tab:hover { color: var(--ink); }
+.project-tab.active { color: var(--selected); border-bottom-color: var(--selected); }
+
+/* ── modales globales del sidebar (proyecto nuevo/editar, hito) ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 250; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 92vw; max-height: 90vh; overflow-y: auto; }
+.modal-sm { width: 340px; }
+.modal-body { padding: 20px 24px; }
+.modal-title { margin: 0 0 14px; font-size: 15px; }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-check { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.form-check input { width: auto; }
+.form-check label { margin: 0; text-transform: none; font-weight: 400; font-size: 13px; }
+.form-hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; width: 100%; }
+input[type=text], input[type=date], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+.btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+.btn-danger { background: var(--color-red); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; transition: background .15s; }
+.btn-danger:hover { background: var(--color-red-dark); }
+.type-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.type-option { cursor: pointer; display: block; }
+.type-option input[type=radio] { display: none; }
+.type-option-body { border: 2px solid var(--border); border-radius: var(--radius); padding: 10px 12px; text-align: center; background: var(--bg); }
+.type-option input:checked + .type-option-body { border-color: var(--selected); background: #f5f3ff; }
+.type-option-icon { font-size: 20px; margin-bottom: 4px; display: flex; justify-content: center; }
+.type-option-name { font-weight: 700; font-size: 13px; }
+.type-option-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.color-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.color-swatch input { display: none; }
+.color-swatch span { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+.color-swatch input:checked + span { border-color: var(--ink); transform: scale(1.15); }
+
+/* Breadcrumb "de situacion" (Espacios > X > Y) -- estrenado en
+   espacio_detalle.html, promovido aqui al usarse ya en paginas de
+   proyecto y del calendario (ver CLAUDE.md). */
+.breadcrumb { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 14px; }
+.breadcrumb a { color: var(--muted); text-decoration: none; }
+.breadcrumb a:hover { color: var(--ink); text-decoration: underline; }
+.breadcrumb-current { color: var(--ink); font-weight: 700; }
+/* Paginas que NO envuelven su contenido en un ".page"/".espacio..." ya
+   padded (tablero, resumen/dashboard/backlog/gantt/sprints/documentos de
+   proyecto, wiki, reunion_detail, agenda_detalle) dejan el breadcrumb como
+   primer hijo directo de .app-content, pegado sin hueco al borde superior
+   izquierdo -- mismo gutter de 24px que usan .project-header/.project-tabs/
+   .project-content en esas mismas paginas, mas aire respecto a la cabecera.
+   margin-bottom SI hace falta (a diferencia de antes, cuando .project-header
+   tenia fondo blanco y el hueco lo daba su propio padding-top): ahora que es
+   un hero de color a sangre, sin margen aqui el breadcrumb queda pegado al
+   borde superior del hero -- mismo aire que ya tiene el breadcrumb de
+   espacio_detalle.html antes de su propio hero. */
+.app-content > .breadcrumb:first-child { padding: 16px 24px 0; margin-bottom: 12px; }
+
+/* Cabecera de un proyecto (titulo + descripcion + badges) -- compartida por
+   las 7 pestañas del proyecto (Resumen/Dashboard/Tablero/Backlog/Gantt/
+   Documentos/Sprints) y reunion_detail.html/agenda_detalle.html, que
+   reusan el mismo bloque para su propia cabecera de detalle. Antes vivia
+   duplicada (con pequeñas variaciones que fueron divergiendo) en el
+   <style> de cada una de esas 9 plantillas -- promovida aqui, mismo
+   criterio que el breadcrumb de arriba.
+   Hero en degradado a juego con el de /espacio/{id}/ (espacio_detalle.html)
+   -- misma familia visual (icono translucido, titulo + meta en blanco
+   sobre el color del proyecto, tarjeta redondeada CONTENIDA con margen
+   alrededor en vez de a sangre -- igual que el hero de espacio_detalle.html
+   dentro de su .page con padding), pero de una sola fila y SIN el patron de
+   circulos decorativos (ese usa un helper Python sembrado por id que no
+   compensa aqui) para no restarle alto util al Tablero, que es donde mas
+   pesa cada pixel vertical. Contenerlo (en vez de a sangre) tambien evita
+   que el color satura toda la anchura de la pantalla en proyectos con un
+   color muy vivo. El degradado se genera en CSS puro con color-mix() (ya
+   usado en este mismo archivo/espacio_detalle.html) en vez de un dato
+   oscurecido en Python -- una sola variable de color por plantilla en vez
+   de dos. proyecto.color es el UNICO dato que varia por proyecto -- al no
+   poder llevar Jinja aqui, cada plantilla que lo necesita fija
+   style="--proyecto-color:..." en el propio elemento; el resto
+   (reunion_detail/agenda_detalle) usa el valor por defecto (var(--selected))
+   tal cual. */
+.project-header { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 0 24px 16px; border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 20px 24px; background: linear-gradient(135deg, color-mix(in srgb, var(--proyecto-color, var(--selected)) 100%, black 32%) 0%, var(--proyecto-color, var(--selected)) 100%); flex-shrink: 0; }
+/* Textura decorativa propia del hero de proyecto (circulos translucidos,
+   igual de espiritu que el patron SVG sembrado por id de espacio_hero_svg()
+   en espacio_detalle.html, pero en CSS puro con radial-gradient -- no hace
+   falta un dato por-proyecto generado en Python solo para esto, y evita
+   duplicar ese helper en cada router que renderiza una pestaña de
+   proyecto). Concentrada a la derecha para no interferir con el texto. */
+.project-header::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+        radial-gradient(circle at 88% 15%, rgba(255,255,255,.16) 0 46px, transparent 47px),
+        radial-gradient(circle at 78% 80%, rgba(255,255,255,.10) 0 30px, transparent 31px),
+        radial-gradient(circle at 97% 55%, rgba(255,255,255,.12) 0 22px, transparent 23px),
+        radial-gradient(circle at 60% 130%, rgba(255,255,255,.08) 0 70px, transparent 71px);
+}
+.project-header-left { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.project-header-right { position: relative; z-index: 1; flex-shrink: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.project-title { font-size: 19px; font-weight: 800; color: #fff; margin-bottom: 5px; line-height: 1.3; display: flex; align-items: center; gap: 10px; text-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.project-title-icon { width: 30px; height: 30px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,.2); backdrop-filter: blur(4px); color: #fff; border: 1.5px solid rgba(255,255,255,.25); }
+.project-desc { font-size: 13px; color: rgba(255,255,255,.85); line-height: 1.5; margin-bottom: 8px; max-width: 720px; text-shadow: 0 1px 3px rgba(0,0,0,.12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-meta-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: rgba(255,255,255,.8); }
+.project-meta-item { display: inline-flex; align-items: center; gap: 5px; }
+.project-meta-item a { color: rgba(255,255,255,.85); text-decoration: none; }
+.project-meta-item a:hover { color: #fff; text-decoration: underline; }
+.proj-status-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: #fff; }
+.proj-status-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.55); flex-shrink: 0; }
+.proj-status-badge[data-estado="Activo"]::before { background: #4ade80; }
+.proj-status-badge[data-estado="En pausa"]::before { background: #fbbf24; }
+
+
+/* ── campana de notificaciones + contador del Buzon (fase 1 de mensajeria) ── */
+.notif-wrap { position: relative; align-self: stretch; display: flex; align-items: center; }
+.notif-btn { position: relative; }
+.notif-count { position: absolute; top: 8px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--color-red); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
+.notif-dropdown { display: none; position: absolute; top: 100%; right: 0; width: 340px; max-width: 92vw; background: var(--panel); color: var(--ink); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); z-index: 200; overflow: hidden; }
+.notif-dropdown.open { display: block; }
+.notif-dd-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.notif-dd-head button { background: none; border: none; color: var(--color-blue); font-size: 12px; cursor: pointer; }
+.notif-dd-lista { max-height: 360px; overflow-y: auto; }
+.notif-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--ink); }
+.notif-item:hover { background: var(--bg); }
+.notif-no-leida { border-left: 3px solid var(--color-blue); background: color-mix(in srgb, var(--color-blue) 5%, var(--panel)); }
+.notif-texto { line-height: 1.4; }
+.notif-fecha { font-size: 11px; color: var(--muted); }
+.notif-vacio { margin: 0; padding: 18px 14px; font-size: 12.5px; color: var(--muted); text-align: center; }
+.notif-ver-todas { display: block; padding: 9px 14px; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--color-blue); }
+.notif-toast { position: fixed; right: 20px; bottom: 20px; max-width: 360px; padding: 12px 16px; background: var(--ink); color: #fff; border-radius: 10px; box-shadow: var(--shadow-md); font-size: 13px; line-height: 1.4; z-index: 400; }
+.notif-toast[hidden] { display: none; }
+.sidebar-buzon-count { margin-left: auto; min-width: 16px; padding: 0 5px; border-radius: 9px; background: var(--color-red); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+.sidebar-buzon-count[hidden] { display: none; }
+.notif-cuerpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notif-tipo { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--muted); }
+.notif-tipo-nota { background: #2563eb; }
+.notif-tipo-recordatorio { background: #d97706; }
+.notif-tipo-tarea_asignada { background: #7c3aed; }
+.notif-tipo-muro { background: #0d9488; }
+.notif-tipo-aviso { background: #f59e0b; }
+.notif-tipo-edi { background: #dc2626; }

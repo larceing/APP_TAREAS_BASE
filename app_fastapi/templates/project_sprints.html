@@ -1,0 +1,246 @@
+{% extends "_base.html" %}
+{% block title %}{{ proyecto.nombre }} · Sprints — {{ app_nombre() }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .btn-primary { background: var(--color-blue); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-secondary { background: #e5e7eb; color: var(--ink); border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-danger { background: var(--color-red); color: #fff; border: none; padding: 7px 16px; border-radius: var(--radius-sm); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+  .project-content { padding: 24px; max-width: 900px; margin: 0 auto; }
+  .empty-page { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-page p { margin-bottom: 16px; font-size: 14px; }
+
+  .sprint-list { display: flex; flex-direction: column; gap: 10px; }
+  .sprint-card-item { display: flex; align-items: center; gap: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; transition: box-shadow .15s; }
+  .sprint-card-item:hover { box-shadow: var(--shadow-sm); }
+  .sprint-card-left  { flex: 1; min-width: 0; }
+  .sprint-card-right { display: flex; align-items: center; gap: var(--gap-btn); flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .sprint-card-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .sprint-estado-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; color: #fff; }
+  .sprint-card-meta { font-size: 12px; color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }
+  .sprint-card-objetivo { font-size: 12px; color: var(--ink); margin-top: 4px; font-style: italic; }
+  .sprint-progress { margin-top: 8px; max-width: 320px; }
+  .sprint-progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .sprint-progress-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+  .sprint-progress-label { font-size: 11px; color: var(--muted); margin-top: 3px; display: flex; justify-content: space-between; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); align-items: center; justify-content: center; z-index: 150; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--panel); border-radius: 10px; width: 380px; max-width: 92vw; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+  .modal-lg { width: 620px; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; }
+  .modal-title { margin: 0 0 14px; font-size: 15px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  input[type=text], input[type=date], select, textarea { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+  .add-task-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); gap: 12px; cursor: pointer; user-select: none; }
+  .add-task-row:hover { background: var(--bg); }
+  .add-task-row-selected, .add-task-row-selected:hover { background: color-mix(in srgb, var(--selected) 12%, var(--panel)); }
+  .add-task-select-wrap { width: 18px; height: 18px; flex-shrink: 0; }
+  .add-task-info  { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .add-task-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+  .add-task-title { font-size: 13px; font-weight: 600; flex: 1; }
+  .add-task-cat   { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/espacios/">Espacios</a>
+  {% if proyecto.espacio_id %} › <a href="/espacio/{{ proyecto.espacio_id }}/">{{ proyecto.espacio_nombre }}</a>{% endif %}
+   › <span class="breadcrumb-current">{{ proyecto.nombre }}</span>
+</div>
+<div class="project-header" style="--proyecto-color: {{ proyecto.color }}">
+  <div class="project-header-left">
+    <h1 class="project-title"><span class="project-title-icon">{{ icon("layers" if proyecto.tipo == "scrum" else "columns", 16) }}</span>{{ proyecto.nombre }}</h1>
+    {% if proyecto.descripcion %}<p class="project-desc" style="margin-bottom:0">{{ proyecto.descripcion }}</p>{% endif %}
+  </div>
+  <div class="project-header-right">
+    <button class="btn-primary" type="button" onclick="openSprintModal('new', '', '', '', '', '', 'planificado')">+ Nuevo sprint</button>
+  </div>
+</div>
+
+{% include "_project_tabs.html" %}
+
+<div class="project-content">
+  {% if proj_sprints %}
+  <div class="sprint-list">
+    {% for s in proj_sprints %}
+    {% set c = sprint_counts.get(s.sprint_id, {"total": 0, "hecha": 0}) %}
+    <div class="sprint-card-item" style="border-left: 4px solid {{ s.estado_color }}">
+      <div class="sprint-card-left">
+        <div class="sprint-card-name">
+          {{ s.nombre }}
+          <span class="sprint-estado-badge" style="background:{{ s.estado_color }}">{{ s.estado }}</span>
+        </div>
+        <div class="sprint-card-meta">
+          {% if s.fecha_inicio %}<span>{{ icon("calendar", 12) }} {{ s.fecha_inicio }}</span>{% endif %}
+          {% if s.fecha_fin %}<span>{{ icon("flag", 12) }} {{ s.fecha_fin }}</span>{% endif %}
+          {% if s.duracion_dias %}<span>{{ icon("clock", 12) }} {{ s.duracion_dias }} días</span>{% endif %}
+        </div>
+        {% if s.objetivo %}<div class="sprint-card-objetivo">{{ s.objetivo }}</div>{% endif %}
+        <div class="sprint-progress">
+          <div class="sprint-progress-bar">
+            <div class="sprint-progress-fill" style="width:{{ (c.hecha / c.total * 100)|round|int if c.total else 0 }}%;background:{{ proyecto.color }}"></div>
+          </div>
+          <div class="sprint-progress-label">
+            <span>{{ c.hecha }} / {{ c.total }} tareas</span>
+            <span>{{ (c.hecha / c.total * 100)|round|int if c.total else 0 }}%</span>
+          </div>
+        </div>
+      </div>
+      <div class="sprint-card-right">
+        <a href="/proyecto/{{ proyecto.id }}/sprint/{{ s.sprint_id }}/" class="btn-primary">Ver tablero</a>
+        <button class="btn-secondary" type="button" onclick="openAddTasksModal('{{ s.sprint_id }}')">+ Añadir existentes</button>
+        <button class="btn-secondary" type="button"
+                onclick="openSprintModal('edit','{{ s.sprint_id }}',{{ s.nombre|tojson_seguro }},{{ s.objetivo|tojson_seguro }},'{{ s.fecha_inicio }}','{{ s.fecha_fin }}','{{ s.estado }}')">Editar</button>
+        {% if s.estado == 'activo' %}
+        <form method="post" action="/sprint/{{ s.sprint_id }}/cerrar/" id="sprintCloseForm-{{ s.sprint_id }}"
+              onsubmit="event.preventDefault(); showConfirm('Las tareas pendientes de {{ s.nombre }} se copiarán al siguiente sprint. ¿Cerrar sprint?', function(){ document.getElementById('sprintCloseForm-{{ s.sprint_id }}').submit(); }, {title:'Cerrar sprint', okText:'Cerrar sprint', danger:true}); return false;">{{ csrf_field() }}
+          <button type="submit" class="btn-danger">Cerrar sprint</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-page">
+    <p>No hay sprints creados todavía.</p>
+    <button class="btn-primary" type="button" onclick="openSprintModal('new', '', '', '', '', '', 'planificado')">Crear primer sprint</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- MODAL: sprint -->
+<div class="modal-overlay" id="sprintModal">
+  <div class="modal">
+    <div class="modal-body">
+      <h3 class="modal-title" id="sprintModalTitle">Nuevo sprint</h3>
+      <form method="post" id="sprintModalForm">{{ csrf_field() }}
+        <div class="form-group"><label>NOMBRE</label><input type="text" name="nombre" id="sp_nombre" placeholder="Sprint 1"></div>
+        <div class="form-group"><label>OBJETIVO</label><textarea name="objetivo" id="sp_objetivo" rows="2"></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>FECHA INICIO</label><input type="date" name="fecha_inicio" id="sp_fi"></div>
+          <div class="form-group"><label>FECHA FIN</label><input type="date" name="fecha_fin" id="sp_ff"></div>
+        </div>
+        <div class="form-group"><label>ESTADO</label>
+          <select name="estado" id="sp_estado">
+            {% for st in sprint_statuses %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('sprintModal')">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: añadir tareas existentes (del backlog) a un sprint -->
+<div class="modal-overlay" id="addTasksModal">
+  <div class="modal modal-lg">
+    <div class="modal-body">
+      <h3 class="modal-title">Añadir tareas al sprint</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tareas del proyecto sin sprint asignado. Selecciona una o varias.</p>
+      <div id="addTasksList" style="max-height:400px;overflow-y:auto;">
+        <p style="color:var(--muted);font-size:13px;">Cargando…</p>
+      </div>
+      <div class="modal-actions">
+        <span id="addTasksCount" style="margin-right:auto;font-size:12px;color:var(--muted);"></span>
+        <button type="button" class="btn-secondary" onclick="closeModal('addTasksModal')">Cerrar</button>
+        <button type="button" class="btn-primary" id="addTasksSubmitBtn" onclick="submitAddTasks()" disabled>Añadir seleccionadas</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(function(el) {
+  el.addEventListener('click', function(e) { if (e.target === this) closeModal(this.id); });
+});
+
+function openSprintModal(mode, sid, nombre, objetivo, fi, ff, estado) {
+  var modal = document.getElementById('sprintModal');
+  var form  = document.getElementById('sprintModalForm');
+  document.getElementById('sprintModalTitle').textContent = mode === 'new' ? 'Nuevo sprint' : 'Editar sprint';
+  form.action = mode === 'new' ? '/proyecto/{{ proyecto.id }}/sprint/nuevo/' : '/sprint/' + sid + '/editar/';
+  document.getElementById('sp_nombre').value   = nombre   || '';
+  document.getElementById('sp_objetivo').value = objetivo || '';
+  document.getElementById('sp_fi').value       = fi       || '';
+  document.getElementById('sp_ff').value       = ff       || '';
+  if (estado) document.getElementById('sp_estado').value = estado;
+  modal.classList.add('open');
+}
+
+// ── añadir tareas del backlog a un sprint (seleccion multiple) ──────────────
+function statusBg(s)    { return s==='Pendiente'?'#fff7ed':s==='En curso'?'#eff6ff':s==='En espera'?'#fefce8':'#f0fdf4'; }
+function statusColor(s) { return s==='Pendiente'?'#9a3412':s==='En curso'?'#1d4ed8':s==='En espera'?'#854d0e':'#166534'; }
+
+var _addTaskSelectedIds = new Set();
+var _addTaskSprintId    = null;
+
+function openAddTasksModal(sprintId) {
+  _addTaskSprintId = sprintId;
+  document.getElementById('addTasksModal').classList.add('open');
+  _addTaskSelectedIds.clear();
+  updateAddTasksBar();
+  var list = document.getElementById('addTasksList');
+  list.innerHTML = '<p style="color:var(--muted);font-size:13px;">Cargando…</p>';
+  fetch('/proyecto/{{ proyecto.id }}/tareas/sin-sprint/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.tasks.length) {
+        list.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:16px;">No hay tareas sin sprint.</p>';
+        return;
+      }
+      var html = '';
+      data.tasks.forEach(function(t) {
+        html += '<div class="add-task-row" data-task-id="' + t.task_id + '" onclick="onAddTaskRowClick(this)">' +
+          '<span class="add-task-select-wrap"><input type="checkbox" class="add-task-select" value="' + t.task_id + '" onclick="event.stopPropagation()" onchange="onAddTaskSelect(this)"></span>' +
+          '<div class="add-task-info">' +
+          '<span class="add-task-status" style="background:' + statusBg(t.status) + ';color:' + statusColor(t.status) + '">' + t.status + '</span>' +
+          '<span class="add-task-title">' + t.title + '</span>' +
+          '<span class="add-task-cat">' + t.category + '</span>' +
+          '</div></div>';
+      });
+      list.innerHTML = html;
+    });
+}
+
+function onAddTaskRowClick(row) {
+  var checkbox = row.querySelector('.add-task-select');
+  checkbox.checked = !checkbox.checked;
+  onAddTaskSelect(checkbox);
+}
+
+function onAddTaskSelect(checkbox) {
+  var row = checkbox.closest('.add-task-row');
+  if (checkbox.checked) { _addTaskSelectedIds.add(checkbox.value); row.classList.add('add-task-row-selected'); }
+  else { _addTaskSelectedIds.delete(checkbox.value); row.classList.remove('add-task-row-selected'); }
+  updateAddTasksBar();
+}
+
+function updateAddTasksBar() {
+  var count = _addTaskSelectedIds.size;
+  document.getElementById('addTasksCount').textContent = count > 0 ? (count + ' seleccionada' + (count !== 1 ? 's' : '')) : '';
+  document.getElementById('addTasksSubmitBtn').disabled = count === 0;
+}
+
+function submitAddTasks() {
+  if (!_addTaskSelectedIds.size || !_addTaskSprintId) return;
+  var fd = new FormData();
+  fd.append('task_ids', JSON.stringify(Array.from(_addTaskSelectedIds)));
+  fetch('/sprint/' + _addTaskSprintId + '/tareas/anadir-varias/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('gestor_csrftoken') }, body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function() { location.reload(); })
+    .catch(function() { location.reload(); });
+}
+</script>
+{% endblock %}
