@@ -1,0 +1,65 @@
+# Un entorno (dev, pre o pro) del Gestor de Tareas en el servidor.
+#
+# No se usa a mano: lo arranca tareas.sh, que saca este fichero de la propia
+# imagen de cada version (asi un rollback vuelve tambien al compose de esa
+# version) y lo deja en /opt/apps/tareas/<entorno>/docker-compose.yml.
+#
+# - Imagen ya construida por GitHub Actions (nada de "build" en el servidor).
+# - Sin puertos publicados: entra por la red del proxy (Nginx Proxy Manager)
+#   con el nombre tareas-<entorno>, puerto 8000.
+# - MariaDB compartida por los tres entornos (contenedor tareas-bd), cada
+#   uno con su usuario y sus bases de datos.
+# Variables: <entorno>/.env (las crea "tareas.sh preparar"). Marca, modulos y
+# login: <entorno>/app.env.
+
+services:
+  app:
+    image: ${IMAGEN:?falta IMAGEN}:${VERSION:?falta VERSION}
+    restart: unless-stopped
+    env_file:
+      - path: app.env
+        required: false
+    environment:
+      DB_HOST: tareas-bd
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:?falta DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD}
+      DB_NAME: ${DB_NAME:?falta DB_NAME}
+      DB_NAME_TEST: ${DB_NAME_TEST:-}
+      INSTALAR_ADMIN: ${INSTALAR_ADMIN:-admin}
+      INSTALAR_ADMIN_PASSWORD: ${INSTALAR_ADMIN_PASSWORD:?falta INSTALAR_ADMIN_PASSWORD}
+      INSTALAR_DEMO: ${INSTALAR_DEMO:-0}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?falta SESSION_SECRET_KEY}
+      MYSQLDUMP_PATH: /usr/bin/mariadb-dump
+    # el servidor es pequeño: que un entorno no se coma la memoria de los demas
+    mem_limit: ${APP_MEMORIA:-512m}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login/', timeout=5).status == 200 else 1)"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 180s
+    volumes:
+      - datos:/app/data
+      - media:/app/media
+      - logs:/app/app_fastapi/logs
+      - cache:/app/.cache
+    networks:
+      bd:
+      proxy:
+        aliases:
+          - tareas-${ENTORNO:?falta ENTORNO}
+
+volumes:
+  datos:
+  media:
+  logs:
+  cache:
+
+networks:
+  bd:
+    name: tareas_bd
+    external: true
+  proxy:
+    name: ${RED_PROXY:-proxy_default}
+    external: true

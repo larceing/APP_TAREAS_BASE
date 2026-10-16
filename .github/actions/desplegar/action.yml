@@ -1,0 +1,53 @@
+name: Desplegar en el servidor
+description: >
+  Pide al servidor (por SSH, con la clave limitada a "tareas.sh ci") que ponga
+  una version en un entorno. Si los secretos del servidor aun no estan, avisa
+  y no hace nada.
+inputs:
+  entorno:
+    description: dev, pre o pro
+    required: true
+  version:
+    description: etiqueta de la imagen (v1.2.0, sha-1a2b3c4) o "anterior" para rollback
+    required: true
+  ssh-key:
+    required: true
+  host:
+    required: true
+  known-hosts:
+    required: true
+  usuario:
+    default: root
+  puerto:
+    default: "22"
+  token:
+    description: token con permiso de lectura de paquetes, para descargar la imagen
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ENTORNO: ${{ inputs.entorno }}
+        VERSION: ${{ inputs.version }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+        HOST: ${{ inputs.host }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+        USUARIO: ${{ inputs.usuario }}
+        PUERTO: ${{ inputs.puerto }}
+        TOKEN: ${{ inputs.token }}
+        ACTOR: ${{ github.actor }}
+      run: |
+        if [ -z "$SSH_KEY" ] || [ -z "$HOST" ] || [ -z "$KNOWN_HOSTS" ]; then
+          echo "::warning::Despliegue sin configurar (faltan DEPLOY_SSH_KEY, DEPLOY_HOST o DEPLOY_KNOWN_HOSTS): no se despliega en $ENTORNO."
+          exit 0
+        fi
+        case "$ENTORNO" in dev|pre|pro) ;; *) echo "entorno no válido: $ENTORNO"; exit 1;; esac
+        [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo "versión no válida: $VERSION"; exit 1; }
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/despliegue && chmod 600 ~/.ssh/despliegue
+        printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+        printf '%s %s\n' "$ACTOR" "$TOKEN" | ssh -i ~/.ssh/despliegue -p "$PUERTO" \
+          -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+          "$USUARIO@$HOST" "desplegar $ENTORNO $VERSION"
+        rm -f ~/.ssh/despliegue

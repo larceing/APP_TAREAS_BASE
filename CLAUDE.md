@@ -103,6 +103,10 @@ Background threads started from `main.py::lifespan`: Recordatorio (break reminde
 
 Full MantisBT integration with one account from `.env` (`MANTIS_*`): import, move tickets, SLA origin breakdown, Vigilante. `MANTIS_REPORTERO_IA` optionally names a bot account whose tickets are counted apart.
 
+### Deployment by environment (`despliegue/`, `.github/workflows/despliegue.yml`)
+
+DEV/PRE/PRO on one server: push to `main` → tests → image `ghcr.io/<repo>:sha-xxxxxxx` → DEV; a published release `vX.Y.Z` → PRE → PRO after approval (GitHub environment `pro`). `despliegue/servidor/tareas.sh` does everything on the server (prepare, deploy with health check and auto-rollback, rollback, DB copies); its compose file is copied into the image (`Dockerfile`) and extracted per version. Domains, hosts and keys only live in GitHub secrets/variables and on the server. See `docs/DESPLIEGUE.md`.
+
 ### Logging
 
 `logging_setup.py` → `app_fastapi/logs/`: `accesos.log`, `cambios.log`, `errores.log`, `queries.log`, `escritorio.log`. Wired once as a middleware in `main.py`.

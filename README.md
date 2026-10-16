@@ -15,6 +15,7 @@ Esta es la **versión base**: la misma aplicación que está en producción, sin
 | [docs/MANUAL_DE_USO.md](docs/MANUAL_DE_USO.md) | Personas que usan la app |
 | [docs/NORMATIVA_DE_USO.md](docs/NORMATIVA_DE_USO.md) | Todo el mundo (plantilla a adaptar por cada empresa) |
 | [docs/ADMINISTRACION.md](docs/ADMINISTRACION.md) | IT: usuarios, copias, actualizaciones, logs |
+| [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md) | IT: entornos DEV, PRE y PRO con versiones y rollback (GitHub Actions) |
 | [docs/CONECTORES.md](docs/CONECTORES.md) | IT: traer datos de otros sistemas como tareas |
 | [docs/NEXUS_ESTRUCTURA_DE_GRAFOS.md](docs/NEXUS_ESTRUCTURA_DE_GRAFOS.md) | IT / desarrollo: modelo de relaciones y catálogo |
 | [docs/NEXUS_PLAN_DE_ACCION.md](docs/NEXUS_PLAN_DE_ACCION.md) | IT: cómo poner en marcha Nexus en una empresa nueva |
