@@ -9,12 +9,12 @@ modulo respecto a load_dotenv().
 - Login: AUTH_MODO = local (por defecto, usuario/contraseña en auth_user) o
   keycloak (SSO, ver auth.py).
 - Modulos opcionales, apagados por defecto: MODULO_MANTIS, MODULO_NEXUS,
-  MODULO_ESCRITORIO, MODULO_CONECTORES. Apagado = no se monta su router, no sale en el menu ni
+  MODULO_ESCRITORIO, MODULO_CONECTORES, MODULO_DESPLIEGUES. Apagado = no se monta su router, no sale en el menu ni
   en Configuracion, y (escritorio) no arrancan sus hilos.
 """
 import os
 
-MODULOS = ("mantis", "nexus", "escritorio", "conectores")
+MODULOS = ("mantis", "nexus", "escritorio", "conectores", "despliegues")
 
 _VERDADERO = {"1", "true", "si", "sí", "yes", "on"}
 

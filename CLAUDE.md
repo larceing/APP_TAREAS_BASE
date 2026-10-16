@@ -41,7 +41,7 @@ There is no configured linter/formatter — don't invent one.
 
 ### Installation-level config: `config.py`
 
-`config.py` reads `.env` on every call (never cached): `app_nombre()/app_empresa()/app_logo()` (branding, exposed as Jinja globals), `auth_modo()` (`local`|`keycloak`) and `modulo_activo(name)` for the optional modules `mantis`, `nexus`, `escritorio`, `conectores` — all **off by default**. A disabled module: its router is not mounted (`main.py`), its menu entries and Configuración tabs are hidden (`modulo_activo()` in templates, `_MODULO_DE_TAB` in `routers/configuracion.py`), and its background threads don't start. Any new optional feature should follow this same pattern. Never hardcode a company name, path, server or person anywhere.
+`config.py` reads `.env` on every call (never cached): `app_nombre()/app_empresa()/app_logo()` (branding, exposed as Jinja globals), `auth_modo()` (`local`|`keycloak`) and `modulo_activo(name)` for the optional modules `mantis`, `nexus`, `escritorio`, `conectores`, `despliegues` — all **off by default**. A disabled module: its router is not mounted (`main.py`), its menu entries and Configuración tabs are hidden (`modulo_activo()` in templates, `_MODULO_DE_TAB` in `routers/configuracion.py`), and its background threads don't start. Any new optional feature should follow this same pattern. Never hardcode a company name, path, server or person anywhere.
 
 ### The real/test entorno toggle
 
@@ -105,7 +105,7 @@ Full MantisBT integration with one account from `.env` (`MANTIS_*`): import, mov
 
 ### Deployment by environment (`despliegue/`, `.github/workflows/despliegue.yml`)
 
-DEV/PRE/PRO on one server: push to `main` → tests → image `ghcr.io/<repo>:sha-xxxxxxx` → DEV; a published release `vX.Y.Z` → PRE → PRO after approval (GitHub environment `pro`). `despliegue/servidor/tareas.sh` does everything on the server (prepare, deploy with health check and auto-rollback, rollback, DB copies); its compose file is copied into the image (`Dockerfile`) and extracted per version. Domains, hosts and keys only live in GitHub secrets/variables and on the server. See `docs/DESPLIEGUE.md`.
+DEV/PRE/PRO on one server: push to `main` → tests → image `ghcr.io/<repo>:sha-xxxxxxx` → DEV; a published release `vX.Y.Z` → PRE → PRO after approval (GitHub environment `pro`). `despliegue/servidor/tareas.sh` does everything on the server (prepare, deploy with health check and auto-rollback, rollback, DB copies); its compose file is copied into the image (`Dockerfile`) and extracted per version. Domains, hosts and keys only live in GitHub secrets/variables and on the server. Optional module `despliegues` (`despliegues.py`, `routers/despliegues.py`, `_config_despliegues.html`) is the no-terminal UI: it only talks to the GitHub API (releases, workflow dispatch, pending-deployment approval) with a token stored encrypted in `ajustes_app` of the REAL DB (`USAR_BD_REAL`, tests set it False), and reads each environment's `GET /version/`. See `docs/DESPLIEGUE.md`.
 
 ### Logging
 

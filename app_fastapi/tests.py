@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 
 # los tests cubren tambien los modulos opcionales: se activan todos ANTES de
 # importar main (que decide al importarse que routers monta)
-for _modulo in ("MANTIS", "NEXUS", "ESCRITORIO", "CONECTORES"):
+for _modulo in ("MANTIS", "NEXUS", "ESCRITORIO", "CONECTORES", "DESPLIEGUES"):
     os.environ[f"MODULO_{_modulo}"] = "1"
 
 from fastapi import HTTPException
@@ -2248,3 +2248,119 @@ class NexusArchivoSinRolTests(EntornoAisladoTestCase):
     def test_sale_en_la_busqueda_normal(self):
         from .nexus import search
         self.assertIn(self.nombre, [a["nombre"] for a in search.search_catalogo(self.nombre[:10])["archivos"]])
+
+
+# ── despliegues (modulo opcional, despliegues.py) ───────────────────────────
+class DespliegueVersionTests(unittest.TestCase):
+    def test_siguiente_version(self):
+        from .despliegues import siguiente_version
+        self.assertEqual(siguiente_version(None, "patch"), "v1.0.0")
+        self.assertEqual(siguiente_version("raro", "minor"), "v1.0.0")
+        self.assertEqual(siguiente_version("v1.2.3", "patch"), "v1.2.4")
+        self.assertEqual(siguiente_version("v1.2.3", "minor"), "v1.3.0")
+        self.assertEqual(siguiente_version("1.2.3", "major"), "v2.0.0")
+
+    def test_endpoint_version_sin_login(self):
+        with patch.dict("os.environ", {"APP_VERSION": "v9.9.9"}):
+            r = TestClient(app, follow_redirects=False).get("/version/")
+        self.assertEqual((r.status_code, r.json()), (200, {"version": "v9.9.9"}))
+
+
+def _respuesta(status=200, datos=None):
+    r = Mock(status_code=status, content=b"x" if datos is not None else b"")
+    r.json.return_value = datos
+    return r
+
+
+class DespliegueGitHubTests(EntornoAisladoTestCase):
+    """GitHub siempre simulado (requests.request); los ajustes van a la BD de
+    pruebas (USAR_BD_REAL = False)."""
+
+    CLAVES = ("repo", "rama", "workflow", "token", "url_dev", "url_pre", "url_pro")
+
+    def setUp(self):
+        from . import despliegues
+        self.d = despliegues
+        despliegues.USAR_BD_REAL = False
+        self.d.guardar_ajustes({"repo": "https://github.com/alguien/app.git", "token": "secreto-123",
+                                "url_pro": "https://pro.test"})
+        for dep in (auth.requiere_it, auth.requiere_login):
+            app.dependency_overrides[dep] = lambda: "test-user"
+        app.dependency_overrides[csrf.proteger] = lambda: None
+        self.client = TestClient(app, follow_redirects=False)
+
+    def tearDown(self):
+        for dep in (auth.requiere_it, auth.requiere_login, csrf.proteger):
+            app.dependency_overrides.pop(dep, None)
+        conn = db.connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM ajustes_app WHERE clave LIKE 'despliegue.%%'")
+            conn.commit()
+        finally:
+            conn.close()
+        self.d.USAR_BD_REAL = True
+
+    def test_token_cifrado_y_repo_normalizado(self):
+        a = self.d.ajustes()
+        self.assertEqual((a["repo"], a["rama"], a["token_guardado"]), ("alguien/app", "main", True))
+        self.assertNotIn("secreto-123", db.get_ajuste("despliegue.token", ""))
+        self.d.guardar_ajustes({"repo": "alguien/app", "token": ""})  # vacio = conservar
+        self.assertEqual(self.d._token(), "secreto-123")
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_crear_version_sube_desde_la_ultima(self, mock):
+        mock.side_effect = [
+            _respuesta(200, [{"tag_name": "v1.4.0"}, {"tag_name": "v1.10.2"}, {"tag_name": "v2.0.0", "draft": True}]),
+            _respuesta(201, {}),
+        ]
+        self.assertEqual(self.d.crear_version("patch"), "v1.10.3")
+        metodo, url = mock.call_args.args
+        self.assertEqual((metodo, url), ("POST", "https://api.github.com/repos/alguien/app/releases"))
+        self.assertEqual(mock.call_args.kwargs["json"]["tag_name"], "v1.10.3")
+        self.assertEqual(mock.call_args.kwargs["headers"]["Authorization"], "Bearer secreto-123")
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_desplegar_y_rollback_lanzan_el_workflow(self, mock):
+        mock.return_value = _respuesta(204)
+        r = self.client.post("/configuracion/despliegues/desplegar/", data={"entorno": "pro", "version": "anterior"})
+        self.assertEqual(r.status_code, 303)
+        self.assertTrue(mock.call_args.args[1].endswith("/actions/workflows/despliegue.yml/dispatches"))
+        self.assertEqual(mock.call_args.kwargs["json"], {"ref": "main", "inputs": {"entorno": "pro", "version": "anterior"}})
+        mock.reset_mock()
+        self.client.post("/configuracion/despliegues/desplegar/", data={"entorno": "pro", "version": "v1; rm -rf /"})
+        mock.assert_not_called()
+
+    @patch("app_fastapi.despliegues.requests.get")
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_panel_con_aprobacion_pendiente(self, mock, mock_get):
+        mock_get.return_value = _respuesta(200, {"version": "v1.3.0"})
+        runs = {"workflow_runs": [{"id": 7, "display_title": "v1.4.0", "event": "release", "status": "waiting",
+                                   "conclusion": None, "html_url": "https://x", "created_at": "2026-10-16T10:00:00Z"}]}
+        pendientes = [{"environment": {"id": 55, "name": "pro"}, "current_user_can_approve": True}]
+        mock.side_effect = [_respuesta(200, [{"tag_name": "v1.4.0"}]), _respuesta(200, runs), _respuesta(200, pendientes)]
+        html = self.client.get("/configuracion/?tipo=despliegues").text
+        self.assertIn("espera aprobación para <b>PRO</b>", html)
+        self.assertIn("v1.3.0", html)
+        mock.side_effect = None
+        mock.return_value = _respuesta(204)
+        self.client.post("/configuracion/despliegues/revisar/", data={"run_id": "7", "entorno_id": "55", "decision": "aprobar"})
+        self.assertEqual(mock.call_args.kwargs["json"]["state"], "approved")
+        self.assertEqual(mock.call_args.kwargs["json"]["environment_ids"], [55])
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_error_de_github_no_rompe_el_panel(self, mock):
+        mock.return_value = _respuesta(401, {"message": "Bad credentials"})
+        r = self.client.get("/configuracion/?tipo=despliegues")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("GitHub no acepta el token", r.text)
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_preparar_entornos_pone_aprobacion_en_pro(self, mock):
+        mock.side_effect = [_respuesta(200, {"id": 42})] + [_respuesta(200, {})] * 3
+        self.client.post("/configuracion/despliegues/preparar-github/")
+        llamadas = [(c.args[1], c.kwargs.get("json")) for c in mock.call_args_list]
+        self.assertEqual(llamadas[0][0], "https://api.github.com/user")
+        self.assertEqual(llamadas[3], ("https://api.github.com/repos/alguien/app/environments/pro",
+                                       {"reviewers": [{"type": "User", "id": 42}]}))
+        self.assertEqual(llamadas[1][1], {})

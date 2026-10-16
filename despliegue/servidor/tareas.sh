@@ -174,6 +174,8 @@ MODULO_MANTIS=0
 MODULO_NEXUS=0
 MODULO_ESCRITORIO=0
 MODULO_CONECTORES=0
+# Configuracion -> Despliegues: gestionar versiones sin terminal (dev y pro)
+MODULO_DESPLIEGUES=$( [[ $ent == pre ]] && echo 0 || echo 1 )
 EOF
     fi
     touch "$DIR/$ent/historial.log"

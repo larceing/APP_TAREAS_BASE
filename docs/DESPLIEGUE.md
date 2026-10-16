@@ -22,6 +22,11 @@ pull request ──► solo pruebas
 
 Si una versión no arranca, el servidor vuelve solo a la que había.
 
+Todo esto se maneja **sin terminal** desde la propia app: *Configuración →
+Despliegues* (en DEV y PRO) enseña qué versión tiene cada entorno y tiene
+botones para sacar una versión nueva, ponerla en un entorno, volver a la
+anterior y aprobar el paso a PRO. Ver [Panel de despliegues](#panel-de-despliegues).
+
 ## Qué hay en el repositorio
 
 | Fichero | Qué hace |
@@ -100,8 +105,10 @@ En el repositorio → *Settings*:
 (por defecto `22`), y `URL_DEV`, `URL_PRE`, `URL_PRO` para que GitHub enseñe el
 enlace de cada entorno.
 
-**Environments**: crea `dev`, `pre` y `pro`. En **pro** marca *Required reviewers*
-y ponte a ti: así nada llega a producción sin que lo apruebes.
+**Environments**: `dev`, `pre` y `pro`, con *Required reviewers* en **pro** (tú)
+para que nada llegue a producción sin tu aprobación. Lo hace solo el botón
+*Crear los entornos en GitHub* del panel (paso 6); a mano: *Settings →
+Environments → New environment*.
 
 Mientras falten los secretos, las pruebas y las imágenes se hacen igual y el
 paso de desplegar solo avisa.
@@ -121,13 +128,49 @@ En *Advanced*: `client_max_body_size 50m;`
 
 ### 5. Primer despliegue
 
-- DEV: haz un push a `main` (o *Actions → Despliegue → Run workflow*, `dev`, versión `sha-xxxxxxx`).
-- PRE y PRO: publica la primera release `v1.0.0` (abajo).
+Haz un push a `main` (o *Actions → Despliegue → Run workflow*, `dev`): DEV queda
+en marcha. Entra con `admin` y la contraseña de
+`grep INSTALAR_ADMIN_PASSWORD /opt/apps/tareas/*/.env`, y cámbiala.
 
-Entra con `admin` y la contraseña de `grep INSTALAR_ADMIN_PASSWORD /opt/apps/tareas/*/.env`,
-y cámbiala.
+### 6. Panel de despliegues
 
-## Día a día
+En DEV (y luego en PRO, que se rellena igual) → *Configuración → Despliegues →
+Conexión con GitHub*:
+
+- **Repositorio**: `usuario/nombre`.
+- **Token**: en GitHub, tu foto → *Settings → Developer settings → Personal access
+  tokens → Fine-grained tokens → Generate new token*. *Repository access*: solo
+  este repositorio. *Permissions → Repository*: **Actions**, **Contents**,
+  **Deployments** y **Administration** en *Read and write* (Administration solo
+  hace falta para el botón de crear entornos; se puede quitar después).
+  Se pega en el panel y se guarda cifrado; no se vuelve a enseñar.
+- **Direcciones** de DEV, PRE y PRO (`https://...`).
+
+Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
+*Crear versión* (será la `v1.0.0`).
+
+## Panel de despliegues
+
+*Configuración → Despliegues* (solo IT, módulo `MODULO_DESPLIEGUES=1`, que
+`preparar` deja activo en DEV y PRO):
+
+| Qué quieres | Qué pulsas |
+|---|---|
+| Ver qué versión tiene cada entorno | Las tres tarjetas de arriba (punto verde = responde) |
+| Probar un cambio | Nada: cada cambio en `main` llega solo a DEV |
+| Sacar una versión | *Sacar una versión nueva* → tipo (arreglos, funciones nuevas, cambios grandes) → *Crear versión*. Va sola a PRE |
+| Pasarla a PRO | Aviso amarillo *espera aprobación para PRO* → **Aprobar** |
+| Volver atrás | *↩ Volver a la anterior* en la tarjeta del entorno |
+| Poner una versión concreta | Escribirla (o elegirla de la lista) en la tarjeta → *Poner* |
+| Ver si algo falló | *Últimas ejecuciones* → *detalle* |
+
+El panel no despliega por sí mismo: le pide a GitHub que lance el workflow, así
+que todo queda registrado en *Actions* igual que si se hiciera allí. Si PRO no
+está en marcha, el panel de DEV sirve igual (y viceversa).
+
+## Sin el panel
+
+Lo mismo se puede hacer desde GitHub o desde el servidor.
 
 **Probar un cambio**: push (o merge de un PR) a `main` → en unos minutos está en DEV.
 
@@ -144,7 +187,7 @@ del medio para funciones nuevas y el primero para cambios que obligan a algo
 
 - Desde GitHub: *Actions → Despliegue → Run workflow*, entorno y versión
   `anterior` (o una concreta, `v1.2.0`). En `pro` también pide aprobación.
-- Desde el servidor (lo más rápido si hay prisa):
+- Desde el servidor (lo más rápido si hay prisa, y funciona aunque la app no):
   ```bash
   /opt/apps/tareas/tareas.sh rollback pro            # a la versión buena anterior
   /opt/apps/tareas/tareas.sh rollback pro v1.1.0     # a una concreta

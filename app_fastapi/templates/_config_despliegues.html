@@ -1,0 +1,136 @@
+{# Panel Configuracion -> Despliegues (incluido desde configuracion.html). POSTs en routers/despliegues.py; datos en despliegues.panel() #}
+{% set d = despliegue %}
+{% set nombres = {"dev": "DEV", "pre": "PRE", "pro": "PRO"} %}
+{% set ayuda = {"dev": "Pruebas: se actualiza solo con cada cambio en la rama principal.", "pre": "Ensayo: recibe cada versión nueva antes que PRO.", "pro": "La que se usa de verdad: solo con tu aprobación."} %}
+<style>
+  .dsp-texto { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .dsp-conexion input[type=password] { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
+  .dsp-entornos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .dsp-entorno { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--panel); }
+  .dsp-entorno h3 { margin: 0 0 2px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .dsp-version { font-size: 20px; font-weight: 700; margin: 6px 0 2px; font-family: ui-monospace, monospace; }
+  .dsp-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--color-gray); }
+  .dsp-punto.ok { background: var(--color-green); } .dsp-punto.mal { background: var(--color-red); }
+  .dsp-entorno form { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .dsp-entorno input[type=text] { flex: 1; min-width: 0; }
+  .dsp-pendiente { border: 1px solid var(--color-amber); background: var(--color-amber-tint); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .dsp-estado { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--color-gray-tint); color: var(--color-gray-dark); }
+  .dsp-estado.success { background: var(--color-green-tint); color: var(--color-green-dark); } .dsp-estado.failure { background: var(--color-red-tint); color: var(--color-red-dark); }
+  .dsp-estado.waiting { background: var(--color-amber-tint); color: var(--color-amber-dark); } .dsp-estado.in_progress, .dsp-estado.queued { background: var(--color-blue-tint); color: var(--color-blue-dark); }
+</style>
+<div class="config-panel">
+  <div class="config-panel-head">
+    <div><h2>Despliegues</h2><p>Versiones de la aplicación en DEV, PRE y PRO. Todo pasa por GitHub: aquí solo se pide y se aprueba.</p></div>
+  </div>
+
+  {% if d.error %}<div class="config-callout" style="border-color:var(--color-red)">{{ icon("zap", 14) }} {{ d.error }}</div>{% endif %}
+  {% if not d.configurado %}
+  <div class="config-callout">{{ icon("key", 14) }} Para empezar, rellena abajo <b>Conexión con GitHub</b> (repositorio y token).</div>
+  {% endif %}
+
+  {# ── aprobaciones pendientes ── #}
+  {% for e in d.ejecuciones %}{% for p in e.pendientes %}
+  <div class="dsp-pendiente">
+    <span>{{ icon("bell", 15) }} <b>{{ e.titulo }}</b> espera aprobación para <b>{{ nombres.get(p.entorno, p.entorno) }}</b>.</span>
+    {% if p.puede %}
+    <form method="post" action="/configuracion/despliegues/revisar/">{{ csrf_field() }}
+      <input type="hidden" name="run_id" value="{{ e.id }}"><input type="hidden" name="entorno_id" value="{{ p.entorno_id }}">
+      <button class="btn-primary btn-sm" name="decision" value="aprobar" type="submit" onclick="return confirm('¿Pasar esta versión a {{ nombres.get(p.entorno, p.entorno) }}?')">Aprobar</button>
+      <button class="btn-secondary btn-sm" name="decision" value="rechazar" type="submit">Rechazar</button>
+    </form>
+    {% else %}<span class="dsp-texto">El dueño del token no está entre los que pueden aprobar en GitHub. <a href="{{ e.url }}" target="_blank" rel="noopener">Abrir en GitHub</a></span>{% endif %}
+  </div>
+  {% endfor %}{% endfor %}
+
+  {# ── entornos ── #}
+  <datalist id="dsp-versiones">{% for v in d.versiones %}<option value="{{ v.version }}">{% endfor %}</datalist>
+  <div class="dsp-entornos">
+    {% for e in d.entornos %}
+    <div class="dsp-entorno">
+      <h3>{{ nombres[e.nombre] }} <span class="dsp-punto {{ 'ok' if e.ok else ('mal' if e.ok == False else '') }}" title="{{ e.detalle or 'responde' }}"></span></h3>
+      <div class="dsp-texto">{{ ayuda[e.nombre] }}</div>
+      <div class="dsp-version">{{ e.version or "—" }}</div>
+      <div class="dsp-texto">{% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener">{{ e.url.split('//')[-1] }}</a>{% if e.detalle %} · {{ e.detalle }}{% endif %}{% else %}sin dirección (abajo){% endif %}</div>
+      {% if d.configurado %}
+      <form method="post" action="/configuracion/despliegues/desplegar/">{{ csrf_field() }}
+        <input type="hidden" name="entorno" value="{{ e.nombre }}">
+        <input type="text" name="version" list="dsp-versiones" placeholder="versión (v1.2.0)" required>
+        <button class="btn-secondary btn-sm" type="submit" onclick="return confirm('¿Poner esa versión en {{ nombres[e.nombre] }}?')">Poner</button>
+      </form>
+      <form method="post" action="/configuracion/despliegues/desplegar/">{{ csrf_field() }}
+        <input type="hidden" name="entorno" value="{{ e.nombre }}"><input type="hidden" name="version" value="anterior">
+        <button class="btn-secondary btn-sm" type="submit" onclick="return confirm('¿Volver {{ nombres[e.nombre] }} a la versión buena anterior?')">↩ Volver a la anterior</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if d.configurado %}
+  {# ── nueva version ── #}
+  <form class="config-form-card" method="post" action="/configuracion/despliegues/nueva-version/" style="max-width:640px;margin-bottom:22px;">{{ csrf_field() }}
+    <h3 style="margin:0 0 4px;font-size:15px;">Sacar una versión nueva</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Toma lo que hay ahora en DEV, lo pone en PRE y deja PRO esperando tu aprobación (arriba).
+      {% if d.versiones %}Última: <b>{{ d.versiones[0].version }}</b>.{% else %}Será la v1.0.0.{% endif %}</p>
+    <div class="form-row">
+      <div class="form-group"><label>QUÉ TRAE</label>
+        <select name="tipo">
+          <option value="patch">Arreglos (v1.2.3 → v1.2.4)</option>
+          <option value="minor">Funciones nuevas (v1.2.3 → v1.3.0)</option>
+          <option value="major">Cambios grandes (v1.2.3 → v2.0.0)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>NOTAS (OPCIONAL)</label><textarea name="notas" rows="2" placeholder="Qué cambia, en una frase. GitHub añade la lista de cambios solo."></textarea></div>
+    <button class="btn-primary" type="submit" onclick="return confirm('¿Crear la versión nueva y ponerla en PRE?')">Crear versión</button>
+  </form>
+
+  {# ── ejecuciones y versiones ── #}
+  <div class="config-subsection"><label>Últimas ejecuciones</label></div>
+  <div class="config-table" style="margin-bottom:20px;">
+    {% for e in d.ejecuciones %}
+    <div class="config-row">
+      <span class="dsp-estado {{ e.resultado or e.estado }}">{{ {"success": "bien", "failure": "falló", "cancelled": "cancelada", "skipped": "omitida", "waiting": "esperando", "in_progress": "en marcha", "queued": "en cola"}.get(e.resultado or e.estado, e.resultado or e.estado) }}</span>
+      <span class="config-name" style="font-size:12.5px">{{ e.titulo }}</span>
+      <span class="config-meta">{{ {"push": "cambio en la rama", "release": "versión nueva", "workflow_dispatch": "pedido a mano", "pull_request": "pull request"}.get(e.evento, e.evento) }}</span>
+      <span class="config-meta">{{ e.fecha }}</span>
+      <span class="config-actions"><a href="{{ e.url }}" target="_blank" rel="noopener">detalle</a></span>
+    </div>
+    {% else %}<p class="config-empty">Sin ejecuciones todavía.</p>{% endfor %}
+  </div>
+  <div class="config-subsection"><label>Versiones</label></div>
+  <div class="config-table" style="margin-bottom:20px;">
+    {% for v in d.versiones %}
+    <div class="config-row">
+      <span class="config-name" style="font-size:12.5px;font-family:ui-monospace,monospace">{{ v.version }}</span>
+      <span class="config-meta">{{ v.fecha }}{% if v.borrador %} · borrador{% endif %}</span>
+      <span class="config-actions"><a href="{{ v.url }}" target="_blank" rel="noopener">notas</a></span>
+    </div>
+    {% else %}<p class="config-empty">Aún no hay versiones.</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── conexion ── #}
+  {% set a = d.ajustes %}
+  <form class="config-form-card dsp-conexion" method="post" action="/configuracion/despliegues/ajustes/" style="max-width:640px;">{{ csrf_field() }}
+    <h3 style="margin:0 0 4px;font-size:15px;">Conexión con GitHub</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Una sola vez. El token se guarda cifrado; los pasos para sacarlo están en docs/DESPLIEGUE.md.</p>
+    <div class="form-row">
+      <div class="form-group"><label>REPOSITORIO *</label><input type="text" name="repo" value="{{ a.repo }}" placeholder="usuario/app_tareas" required></div>
+      <div class="form-group" style="flex:0 0 140px;"><label>RAMA</label><input type="text" name="rama" value="{{ a.rama }}"></div>
+    </div>
+    <div class="form-group"><label>TOKEN DE GITHUB{% if not a.token_guardado %} *{% endif %}</label>
+      <input type="password" name="token" autocomplete="new-password" placeholder="{{ '•••••• (guardado; déjalo vacío para conservarlo)' if a.token_guardado else 'github_pat_…' }}"></div>
+    {% for e in ["dev", "pre", "pro"] %}
+    <div class="form-group"><label>DIRECCIÓN DE {{ nombres[e] }}</label><input type="url" name="url_{{ e }}" value="{{ a['url_' ~ e] }}" placeholder="https://"></div>
+    {% endfor %}
+    <input type="hidden" name="workflow" value="{{ a.workflow }}">
+    <button class="btn-primary" type="submit">Guardar</button>
+  </form>
+  {% if d.configurado %}
+  <form method="post" action="/configuracion/despliegues/preparar-github/" style="margin-top:10px;">{{ csrf_field() }}
+    <button class="btn-secondary btn-sm" type="submit">Crear los entornos en GitHub (PRO con aprobación)</button>
+    <span class="dsp-texto">Una vez, tras guardar el token.</span>
+  </form>
+  {% endif %}
+</div>

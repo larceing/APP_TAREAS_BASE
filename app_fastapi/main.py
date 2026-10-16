@@ -131,6 +131,16 @@ if config.modulo_activo("nexus"):
 if config.modulo_activo("conectores"):
     from .routers import conectores
     app.include_router(conectores.router)
+if config.modulo_activo("despliegues"):
+    from .routers import despliegues
+    app.include_router(despliegues.router)
+
+
+@app.get("/version/")
+def version():
+    """Version de la imagen desplegada (APP_VERSION, la pone el Dockerfile):
+    la consulta el panel Configuracion -> Despliegues. Sin login."""
+    return JSONResponse({"version": os.getenv("APP_VERSION", "local")})
 
 
 
