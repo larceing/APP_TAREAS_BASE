@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Despliegue del Gestor de Tareas por entornos (dev, pre, pro) en un servidor
+# Despliegue del Gestor de Tareas por entornos (dev y pro) en un servidor
 # con Docker. Ver docs/DESPLIEGUE.md.
 #
 #   tareas.sh preparar IMAGEN          primera vez: carpetas, secretos, MariaDB
@@ -10,20 +10,20 @@
 #   tareas.sh historial ENT            versiones desplegadas en ENT
 #   tareas.sh copia ENT                copia de la base de datos de ENT
 #   tareas.sh restaurar ENT FICHERO    vuelve la BD de ENT a una copia
-#   tareas.sh pro-a-pre                copia los datos de pro en pre
+#   tareas.sh pro-a-dev                copia los datos de pro en dev
 #   tareas.sh logs ENT                 log de la app de ENT
 #
-# ENT = dev | pre | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
+# ENT = dev | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
 #   <ENT>/.env                secretos y version actual (lo crea "preparar")
 #   <ENT>/app.env             marca, modulos y login de ese entorno
 #   <ENT>/docker-compose.yml  sacado de la imagen de la version desplegada
 #   <ENT>/historial.log       que se desplego y cuando
 #   bd/                       MariaDB compartida (contenedor tareas-bd)
-#   copias/<ENT>/             copias de la BD (antes de cada despliegue en pre/pro)
+#   copias/<ENT>/             copias de la BD (antes de cada despliegue en pro)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENTORNOS="dev pre pro"
+ENTORNOS="dev pro"
 ESPERA_SALUD=${ESPERA_SALUD:-300}   # segundos para que la version nueva este sana
 COPIAS_A_GUARDAR=${COPIAS_A_GUARDAR:-15}
 VERSIONES_A_GUARDAR=${VERSIONES_A_GUARDAR:-4}
@@ -33,7 +33,7 @@ log() { echo "· $*"; }
 ahora() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 entorno_valido() {
-  case " $ENTORNOS " in *" $1 "*) ;; *) die "entorno '$1' no válido (dev, pre o pro)";; esac
+  case " $ENTORNOS " in *" $1 "*) ;; *) die "entorno '$1' no válido (dev o pro)";; esac
   [[ -f "$DIR/$1/.env" ]] || die "el entorno '$1' no está preparado (tareas.sh preparar)"
 }
 
@@ -69,7 +69,7 @@ bd_sql() {   # ejecuta SQL (por stdin) como root en la MariaDB compartida
 escribir_compose_bd() {
   mkdir -p "$DIR/bd"
   cat > "$DIR/bd/docker-compose.yml" <<'YAML'
-# MariaDB compartida por los entornos dev, pre y pro del Gestor de Tareas.
+# MariaDB compartida por los entornos dev y pro del Gestor de Tareas.
 # Una sola instancia (el servidor tiene poca memoria); cada entorno tiene su
 # usuario y solo ve sus bases de datos. Sin puertos publicados: solo la red
 # interna tareas_bd. Lo escribe "tareas.sh preparar".
@@ -114,6 +114,93 @@ esperar_bd() {
   die "MariaDB (tareas-bd) no arranca: docker logs tareas-bd"
 }
 
+# ── entrada comun de cada entorno ────────────────────────────────────────────
+# Un nginx por entorno (entrada-dev, entrada-pro) en la red del proxy: el
+# dominio general de cada entorno (dev.<dominio>, pro.<dominio>) va a el, y
+# reparte por ruta entre las apps (/tareas/, y las que se vayan sumando con
+# un fichero en entrada/<ENT>/apps/<app>.conf). Cada app recibe su ruta en
+# X-Forwarded-Prefix, asi la misma instancia sirve tambien en su propio
+# dominio el dia que lo tenga.
+preparar_entrada() {
+  local red_proxy=$1 ent
+  umask 022   # nginx (otro usuario) tiene que poder leerlo
+  mkdir -p "$DIR/entrada"
+  chmod 755 "$DIR" "$DIR/entrada"
+  cat > "$DIR/entrada/docker-compose.yml" <<YAML
+# Entradas comunes de los entornos dev y pro (lo escribe tareas.sh preparar).
+name: entrada
+services:
+YAML
+  for ent in $ENTORNOS; do
+    mkdir -p "$DIR/entrada/$ent/apps" "$DIR/entrada/$ent/html"
+    cat >> "$DIR/entrada/docker-compose.yml" <<YAML
+  $ent:
+    image: nginx:1.27-alpine
+    container_name: entrada-$ent
+    restart: unless-stopped
+    mem_limit: 64m
+    volumes:
+      - ./$ent:/etc/nginx/conf.d:ro
+    networks:
+      proxy:
+        aliases: [entrada-$ent]
+YAML
+    cat > "$DIR/entrada/$ent/default.conf" <<'NGINX'
+# Entrada del entorno: portada en / y una app por ruta (apps/*.conf)
+server {
+  listen 80;
+  client_max_body_size 50m;
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  location = / { root /etc/nginx/conf.d/html; try_files /index.html =404; }
+  include /etc/nginx/conf.d/apps/*.conf;
+}
+NGINX
+    cat > "$DIR/entrada/$ent/apps/tareas.conf" <<NGINX
+# app: Gestor de Tareas
+location = /tareas { return 308 /tareas/; }
+location /tareas/ {
+  set \$destino http://tareas-$ent:8000;
+  proxy_pass \$destino;
+  proxy_http_version 1.1;
+  proxy_set_header Host \$host;
+  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+  proxy_set_header X-Forwarded-Prefix /tareas;
+  proxy_set_header Upgrade \$http_upgrade;
+  proxy_set_header Connection "upgrade";
+}
+NGINX
+    escribir_portada "$ent"
+  done
+  cat >> "$DIR/entrada/docker-compose.yml" <<YAML
+networks:
+  proxy:
+    name: $red_proxy
+    external: true
+YAML
+  docker compose -f "$DIR/entrada/docker-compose.yml" up -d --remove-orphans
+  for ent in $ENTORNOS; do docker exec "entrada-$ent" nginx -s reload >/dev/null 2>&1 || true; done
+  umask 077
+}
+
+# portada del entorno: un enlace por app (la linea "# app: nombre" de su .conf)
+escribir_portada() {
+  local ent=$1 f ruta nombre lista=""
+  for f in "$DIR/entrada/$ent/apps"/*.conf; do
+    [[ -f "$f" ]] || continue
+    ruta="/$(basename "$f" .conf)/"
+    nombre=$(sed -n 's/^# app: //p' "$f" | head -n1)
+    lista+="<li><a href=\"$ruta\">${nombre:-$ruta}</a></li>"
+  done
+  cat > "$DIR/entrada/$ent/html/index.html" <<HTML
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Entorno ${ent^^}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 16px;color:#1f2937}
+h1{font-size:20px}li{margin:8px 0}a{color:#2563eb}</style>
+<h1>Entorno ${ent^^}</h1><ul>$lista</ul>
+HTML
+}
+
 # ── preparar ─────────────────────────────────────────────────────────────────
 cmd_preparar() {
   local imagen=${1:-}
@@ -138,7 +225,6 @@ cmd_preparar() {
     mkdir -p "$DIR/$ent" "$DIR/copias/$ent"
     case $ent in
       dev) demo=1; memoria=512m; nombre="Gestor de Tareas (DEV)";;
-      pre) demo=0; memoria=512m; nombre="Gestor de Tareas (PRE)";;
       pro) demo=0; memoria=768m; nombre="Gestor de Tareas";;
     esac
     if [[ ! -f "$DIR/$ent/.env" ]]; then
@@ -174,8 +260,8 @@ MODULO_MANTIS=0
 MODULO_NEXUS=0
 MODULO_ESCRITORIO=0
 MODULO_CONECTORES=0
-# Configuracion -> Despliegues: gestionar versiones sin terminal (dev y pro)
-MODULO_DESPLIEGUES=$( [[ $ent == pre ]] && echo 0 || echo 1 )
+# Configuracion -> Despliegues: gestionar versiones sin terminal
+MODULO_DESPLIEGUES=1
 EOF
     fi
     touch "$DIR/$ent/historial.log"
@@ -194,6 +280,7 @@ EOF
   done
   chmod 600 "$DIR"/*/.env
 
+  preparar_entrada "$red_proxy"
   preparar_clave_github
   chmod 700 "$DIR/tareas.sh" 2>/dev/null || true
 
@@ -415,12 +502,12 @@ cmd_restaurar() {
   esperar_salud "$ent" && log "$ent restaurado con $(basename "$fichero")" || die "$ent no arranca tras restaurar: tareas.sh logs $ent"
 }
 
-cmd_pro_a_pre() {
-  entorno_valido pro; entorno_valido pre
+cmd_pro_a_dev() {
+  entorno_valido pro; entorno_valido dev
   COPIA_HECHA=""
-  cmd_copia pro "para-pre"
+  cmd_copia pro "para-dev"
   [[ -n "$COPIA_HECHA" ]] || die "pro aún no tiene base de datos"
-  cmd_restaurar pre "$COPIA_HECHA" "${1:-}"
+  cmd_restaurar dev "$COPIA_HECHA" "${1:-}"
 }
 
 # ── consulta ─────────────────────────────────────────────────────────────────
@@ -468,7 +555,7 @@ case "${1:-}" in
   historial)  shift; cmd_historial "$@" ;;
   copia)      shift; cmd_copia "$@" ;;
   restaurar)  shift; cmd_restaurar "$@" ;;
-  pro-a-pre)  shift; cmd_pro_a_pre "$@" ;;
+  pro-a-dev)  shift; cmd_pro_a_dev "$@" ;;
   logs)       shift; cmd_logs "$@" ;;
   ci)         cmd_ci ;;
   *)          uso; exit 1 ;;

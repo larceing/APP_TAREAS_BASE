@@ -1,7 +1,7 @@
 {# Panel Configuracion -> Despliegues (incluido desde configuracion.html). POSTs en routers/despliegues.py; datos en despliegues.panel() #}
 {% set d = despliegue %}
-{% set nombres = {"dev": "DEV", "pre": "PRE", "pro": "PRO"} %}
-{% set ayuda = {"dev": "Pruebas: se actualiza solo con cada cambio en la rama principal.", "pre": "Ensayo: recibe cada versión nueva antes que PRO.", "pro": "La que se usa de verdad: solo con tu aprobación."} %}
+{% set nombres = {"dev": "DEV", "pro": "PRO"} %}
+{% set ayuda = {"dev": "Pruebas: se actualiza solo con cada cambio en la rama principal.", "pro": "La que se usa de verdad: solo con tu aprobación."} %}
 <style>
   .dsp-texto { font-size: 12px; color: var(--muted); line-height: 1.4; }
   .dsp-conexion input[type=password] { font-family: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; width: 100%; background: var(--panel); color: var(--ink); }
@@ -20,7 +20,7 @@
 </style>
 <div class="config-panel">
   <div class="config-panel-head">
-    <div><h2>Despliegues</h2><p>Versiones de la aplicación en DEV, PRE y PRO. Todo pasa por GitHub: aquí solo se pide y se aprueba.</p></div>
+    <div><h2>Despliegues</h2><p>Versiones de la aplicación en DEV (pruebas) y PRO. Todo pasa por GitHub: aquí solo se pide y se aprueba.</p></div>
   </div>
 
   {% if d.error %}<div class="config-callout" style="border-color:var(--color-red)">{{ icon("zap", 14) }} {{ d.error }}</div>{% endif %}
@@ -70,7 +70,7 @@
   {# ── nueva version ── #}
   <form class="config-form-card" method="post" action="/configuracion/despliegues/nueva-version/" style="max-width:640px;margin-bottom:22px;">{{ csrf_field() }}
     <h3 style="margin:0 0 4px;font-size:15px;">Sacar una versión nueva</h3>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Toma lo que hay ahora en DEV, lo pone en PRE y deja PRO esperando tu aprobación (arriba).
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Toma lo que hay ahora en DEV (ya probado) y deja PRO esperando tu aprobación (arriba).
       {% if d.versiones %}Última: <b>{{ d.versiones[0].version }}</b>.{% else %}Será la v1.0.0.{% endif %}</p>
     <div class="form-row">
       <div class="form-group"><label>QUÉ TRAE</label>
@@ -82,7 +82,7 @@
       </div>
     </div>
     <div class="form-group"><label>NOTAS (OPCIONAL)</label><textarea name="notas" rows="2" placeholder="Qué cambia, en una frase. GitHub añade la lista de cambios solo."></textarea></div>
-    <button class="btn-primary" type="submit" onclick="return confirm('¿Crear la versión nueva y ponerla en PRE?')">Crear versión</button>
+    <button class="btn-primary" type="submit" onclick="return confirm('¿Crear la versión nueva con lo que hay en DEV?')">Crear versión</button>
   </form>
 
   {# ── ejecuciones y versiones ── #}
@@ -121,7 +121,7 @@
     </div>
     <div class="form-group"><label>TOKEN DE GITHUB{% if not a.token_guardado %} *{% endif %}</label>
       <input type="password" name="token" autocomplete="new-password" placeholder="{{ '•••••• (guardado; déjalo vacío para conservarlo)' if a.token_guardado else 'github_pat_…' }}"></div>
-    {% for e in ["dev", "pre", "pro"] %}
+    {% for e in ["dev", "pro"] %}
     <div class="form-group"><label>DIRECCIÓN DE {{ nombres[e] }}</label><input type="url" name="url_{{ e }}" value="{{ a['url_' ~ e] }}" placeholder="https://"></div>
     {% endfor %}
     <input type="hidden" name="workflow" value="{{ a.workflow }}">

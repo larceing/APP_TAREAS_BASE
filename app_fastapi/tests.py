@@ -2357,10 +2357,77 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
 
     @patch("app_fastapi.despliegues.requests.request")
     def test_preparar_entornos_pone_aprobacion_en_pro(self, mock):
-        mock.side_effect = [_respuesta(200, {"id": 42})] + [_respuesta(200, {})] * 3
+        mock.side_effect = [_respuesta(200, {"id": 42})] + [_respuesta(200, {})] * 2
         self.client.post("/configuracion/despliegues/preparar-github/")
         llamadas = [(c.args[1], c.kwargs.get("json")) for c in mock.call_args_list]
         self.assertEqual(llamadas[0][0], "https://api.github.com/user")
-        self.assertEqual(llamadas[3], ("https://api.github.com/repos/alguien/app/environments/pro",
+        self.assertEqual(llamadas[2], ("https://api.github.com/repos/alguien/app/environments/pro",
                                        {"reviewers": [{"type": "User", "id": 42}]}))
         self.assertEqual(llamadas[1][1], {})
+
+
+# ── ruta_base.py: servir la app bajo /tareas ────────────────────────────────
+
+class RutaBaseTests(unittest.TestCase):
+    """El middleware se prueba aislado (un app minimo)."""
+
+    def setUp(self):
+        from fastapi import FastAPI, Request
+        from fastapi.responses import HTMLResponse, JSONResponse as _JSON, RedirectResponse as _Redir
+        from . import ruta_base
+
+        mini = FastAPI()
+
+        @mini.get("/pagina/")
+        def pagina():
+            return HTMLResponse('<a href="/">x</a><a href="/notas/">n</a>'
+                                "<script>f('/proyecto/' + id + '/tablero/'); a.split('/')</script>"
+                                """<script>s.replace(/'/g, "&#39;").replace(/"/g, '')</script>"""
+                                '<a href="/tareas/ya/">y</a><a href="https://otra.test/z">e</a>')
+
+        @mini.get("/ir/")
+        def ir():
+            return _Redir(url="/notas/", status_code=303)
+
+        @mini.get("/datos/")
+        def datos():
+            return _JSON({"url": "/buzon/", "texto": "/no/tocar", "lista": [{"enlace": "/muro/"}]})
+
+        @mini.get("/ruta/")
+        def ruta(request: Request):
+            return _JSON({"path": request.url.path})
+
+        self.client = TestClient(ruta_base.RutaBaseMiddleware(mini, prefijo="/tareas"))
+
+    def test_html_prefija_rutas_propias_y_deja_el_resto(self):
+        html = self.client.get("/tareas/pagina/").text
+        self.assertIn('href="/tareas/"', html)
+        self.assertIn('href="/tareas/notas/"', html)
+        self.assertIn("f('/tareas/proyecto/' + id + '/tablero/')", html)
+        self.assertIn("a.split('/')", html)
+        self.assertIn("""s.replace(/'/g, "&#39;").replace(/"/g, '')""", html)
+        self.assertIn('href="/tareas/ya/"', html)
+        self.assertIn('href="https://otra.test/z"', html)
+
+    def test_redireccion_y_json(self):
+        r = self.client.get("/tareas/ir/", follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/tareas/notas/")
+        self.assertEqual(self.client.get("/tareas/datos/").json(),
+                         {"url": "/tareas/buzon/", "texto": "/no/tocar", "lista": [{"enlace": "/tareas/muro/"}]})
+
+    def test_la_app_ve_la_ruta_sin_prefijo(self):
+        self.assertEqual(self.client.get("/tareas/ruta/").json(), {"path": "/ruta/"})
+        r = self.client.get("/tareas", follow_redirects=False)
+        self.assertEqual((r.status_code, r.headers["location"]), (308, "/tareas/"))
+
+    def test_ruta_por_cabecera_del_proxy(self):
+        from . import ruta_base
+        client = TestClient(ruta_base.RutaBaseMiddleware(self.client.app.app, prefijo=""))
+        r = client.get("/tareas/ir/", headers={"X-Forwarded-Prefix": "/tareas"}, follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/tareas/notas/")
+        # sin cabecera (su propio dominio): tal cual, en la raiz
+        self.assertEqual(client.get("/ir/", follow_redirects=False).headers["location"], "/notas/")
+        # cabecera rara: se ignora
+        r = client.get("/ir/", headers={"X-Forwarded-Prefix": "/a b<x"}, follow_redirects=False)
+        self.assertEqual(r.headers["location"], "/notas/")
+

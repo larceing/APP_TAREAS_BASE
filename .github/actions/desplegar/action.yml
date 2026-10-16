@@ -5,7 +5,7 @@ description: >
   y no hace nada.
 inputs:
   entorno:
-    description: dev, pre o pro
+    description: dev o pro
     required: true
   version:
     description: etiqueta de la imagen (v1.2.0, sha-1a2b3c4) o "anterior" para rollback
@@ -42,7 +42,7 @@ runs:
           echo "::warning::Despliegue sin configurar (faltan DEPLOY_SSH_KEY, DEPLOY_HOST o DEPLOY_KNOWN_HOSTS): no se despliega en $ENTORNO."
           exit 0
         fi
-        case "$ENTORNO" in dev|pre|pro) ;; *) echo "entorno no válido: $ENTORNO"; exit 1;; esac
+        case "$ENTORNO" in dev|pro) ;; *) echo "entorno no válido: $ENTORNO"; exit 1;; esac
         [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo "versión no válida: $VERSION"; exit 1; }
         mkdir -p ~/.ssh && chmod 700 ~/.ssh
         printf '%s\n' "$SSH_KEY" > ~/.ssh/despliegue && chmod 600 ~/.ssh/despliegue

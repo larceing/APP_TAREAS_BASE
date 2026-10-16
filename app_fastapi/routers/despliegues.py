@@ -12,7 +12,7 @@ from ..flash import flash
 
 router = APIRouter(prefix="/configuracion/despliegues", tags=["despliegues"], dependencies=[Depends(auth.requiere_it)])
 
-_NOMBRE = {"dev": "DEV", "pre": "PRE", "pro": "PRO"}
+_NOMBRE = {"dev": "DEV", "pro": "PRO"}
 
 
 def _volver() -> RedirectResponse:
@@ -34,7 +34,7 @@ async def guardar_ajustes(request: Request, usuario: str = Depends(auth.requiere
 def preparar_github(request: Request, usuario: str = Depends(auth.requiere_login)):
     try:
         despliegues.preparar_entornos()
-        flash(request, "success", "Entornos dev, pre y pro creados en GitHub; PRO pedirá tu aprobación.")
+        flash(request, "success", "Entornos dev y pro creados en GitHub; PRO pedirá tu aprobación.")
     except despliegues.DespliegueError as e:
         flash(request, "error", str(e))
     return _volver()
@@ -45,8 +45,8 @@ async def crear_version(request: Request, usuario: str = Depends(auth.requiere_l
     form = await request.form()
     try:
         nueva = despliegues.crear_version(form.get("tipo", ""), form.get("notas", ""))
-        flash(request, "success", f"Versión {nueva} creada. Se está construyendo y pasará sola a PRE; "
-                                  "cuando la hayas probado, apruébala aquí para que llegue a PRO.")
+        flash(request, "success", f"Versión {nueva} creada. Se está construyendo; en unos minutos "
+                                  "aparecerá aquí arriba para que la apruebes y llegue a PRO.")
     except despliegues.DespliegueError as e:
         flash(request, "error", str(e))
     return _volver()

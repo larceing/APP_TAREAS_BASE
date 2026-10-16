@@ -17,7 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-from . import auth, config, csrf, db, escritorio_servicios, logging_setup, portada  # noqa: E402
+from . import auth, config, csrf, db, escritorio_servicios, logging_setup, portada, ruta_base  # noqa: E402
 from .flash import flash  # noqa: E402
 from .routers import agenda, api_externa, buzon, calendario, configuracion, login, mantis, marcadores, muro, nexus, notas, notificaciones, proyectos, reunion, sla, tablero, whiteboard, wiki  # noqa: E402
 from .templating import templates  # noqa: E402
@@ -50,6 +50,13 @@ app = FastAPI(title=config.app_nombre(), dependencies=[Depends(csrf.proteger)], 
 # bundle demasiado grande para meterlo inline. Copiado literal de
 # static/js/editorjs/ de la app real (ver app_fastapi/wiki_store.py).
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+
+# Servir bajo una ruta (/tareas): APP_RUTA_BASE o la cabecera X-Forwarded-Prefix
+# del proxy de delante -- ver ruta_base.py. Sin ninguna de las dos no hace nada.
+# Va antes que la sesion (por dentro): copia el scope, y la sesion tiene que
+# quedar en el de fuera para el middleware de logs.
+app.add_middleware(ruta_base.RutaBaseMiddleware, prefijo=ruta_base.ruta_base())
+
 
 # Sesion propia de esta v2 (cookie firmada, NO la sesion de Django) -- ver
 # auth.py. Si no hay SESSION_SECRET_KEY en el .env se genera una al vuelo

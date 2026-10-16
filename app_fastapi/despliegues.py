@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Modulo opcional MODULO_DESPLIEGUES: gestionar las versiones de los
-entornos DEV, PRE y PRO desde Configuracion -> Despliegues, sin terminal.
+entornos DEV y PRO desde Configuracion -> Despliegues, sin terminal.
 
 No despliega nada por si mismo: habla con GitHub (el workflow
 .github/workflows/despliegue.yml y las releases) con un token que se guarda
@@ -16,7 +16,7 @@ import requests
 from . import db
 from .nexus import cripto
 
-ENTORNOS = ("dev", "pre", "pro")
+ENTORNOS = ("dev", "pro")
 API = "https://api.github.com"
 TIMEOUT = 10
 _CIFRADO = "cifrado:"
@@ -151,7 +151,7 @@ def siguiente_version(ultima: str | None, tipo: str) -> str:
 
 def crear_version(tipo: str, notas: str = "") -> str:
     """Publica una release nueva sobre la rama principal: el workflow la
-    construye, la pone en PRE y deja PRO esperando aprobacion."""
+    construye y deja PRO esperando aprobacion."""
     if tipo not in ("patch", "minor", "major"):
         raise DespliegueError("Tipo de versión desconocido.")
     publicadas = [v["version"] for v in versiones(30) if not v["borrador"] and _SEMVER.match(v["version"])]
@@ -185,7 +185,7 @@ def revisar(run_id: int, entorno_id: int, aprobar: bool) -> None:
 
 
 def preparar_entornos() -> None:
-    """Crea en GitHub los entornos dev, pre y pro; en pro, el dueño del token
+    """Crea en GitHub los entornos dev y pro; en pro, el dueño del token
     tiene que aprobar cada despliegue. Repetirlo no cambia nada."""
     yo = _github("GET", "//user") or {}
     for e in ENTORNOS:

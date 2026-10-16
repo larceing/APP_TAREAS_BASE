@@ -1,7 +1,7 @@
 # Pruebas, imagen y despliegue por entornos. Ver docs/DESPLIEGUE.md.
 #
 #   push a main            -> pruebas -> imagen sha-xxxxxxx -> DEV
-#   release publicada vX   -> pruebas -> imagen vX           -> PRE -> (aprobar) -> PRO
+#   release publicada vX   -> pruebas -> imagen vX           -> (aprobar) -> PRO
 #   "Run workflow" a mano  -> pone una version que ya existe en el entorno
 #                             elegido (o "anterior" = rollback)
 #   pull request           -> solo pruebas
@@ -18,7 +18,7 @@ on:
       entorno:
         description: Entorno
         type: choice
-        options: [dev, pre, pro]
+        options: [dev, pro]
         required: true
       version:
         description: 'Versión ya construida (v1.2.0, sha-1a2b3c4) o "anterior" para volver a la versión buena previa'
@@ -128,34 +128,10 @@ jobs:
           puerto: ${{ vars.DEPLOY_PORT || '22' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  pre:
-    needs: imagen
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    environment:
-      name: pre
-      url: ${{ vars.URL_PRE }}
-    concurrency: despliegue-pre
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/desplegar
-        with:
-          entorno: pre
-          version: ${{ needs.imagen.outputs.version }}
-          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
-          host: ${{ secrets.DEPLOY_HOST }}
-          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          usuario: ${{ vars.DEPLOY_USER || 'root' }}
-          puerto: ${{ vars.DEPLOY_PORT || '22' }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   # El entorno "pro" de GitHub tiene "Required reviewers": este paso espera a
-  # que alguien pulse "Approve" tras probar la version en PRE.
+  # que alguien pulse "Approve" (lo normal: tras probar esa version en DEV).
   pro:
-    needs: [imagen, pre]
+    needs: imagen
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     environment:
