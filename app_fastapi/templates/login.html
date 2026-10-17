@@ -33,6 +33,7 @@ body {
 .btn-full { width: 100%; }
 .login-version { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 14px; }
 </style>
+{% if app_tema_css() %}<link rel="stylesheet" href="{{ app_tema_css() }}">{% endif %}
 </head>
 <body>
 

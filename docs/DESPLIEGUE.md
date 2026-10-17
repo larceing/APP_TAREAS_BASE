@@ -217,6 +217,8 @@ del medio para funciones nuevas y el primero para cambios que obligan a algo
 ./tareas.sh copia pro               # copia de la BD ahora
 ./tareas.sh restaurar pro FICHERO   # volver la BD a una copia (hace otra antes)
 ./tareas.sh pro-a-dev               # copia los datos de PRO en DEV para probar con datos reales
+./tareas.sh importar pro ORIGEN     # datos de una instalación de antes (ver más abajo)
+./tareas.sh publicar URL ALIAS      # PRO toma su dirección (ver más abajo)
 ```
 
 **Cambiar la configuración** de un entorno (marca, login, módulos): edita
@@ -310,6 +312,42 @@ La línea `# app: Nombre` es su tarjeta en la portada; con `# salud: <camino>`
 (por defecto `version/`) la portada pide `<ruta><camino>` para ver si está en
 marcha, y su versión si responde JSON con `"version"`. Si la app no responde,
 la entrada enseña una página de "no disponible" en vez de un 502.
+
+## Una instalación de antes pasa a ser PRO
+
+Cuando ya había un Gestor de Tareas suelto (con sus datos y su dirección, p.
+ej. detrás de un portal que manda `/tareas` a `spsil-tareas:8000`) y se quiere
+que a partir de ahora sea el PRO de este sistema, con versiones desde el panel.
+En el servidor, en `/opt/apps/tareas`, una orden detrás de otra (lo que se
+escriba entre las dos en la instalación de antes no pasa):
+
+```bash
+# 1. sus datos y sus adjuntos a PRO (antes guarda copia de lo que hay en PRO)
+./tareas.sh importar pro <contenedor-de-su-bd> <contenedor-de-su-app>
+# 2. PRO toma su dirección y su nombre en la red del proxy
+./tareas.sh publicar https://portal.tudominio.com/tareas spsil-tareas Tareas
+```
+
+`importar` acepta también un volcado (`.sql` o `.sql.gz`) en vez del
+contenedor; si en el contenedor hay más de una base, se elige con
+`BD_ORIGEN=<base> ./tareas.sh importar ...`.
+
+`publicar URL [ALIAS|-] [GRUPO]`:
+
+- añade la dirección al cliente `tareas-pro` de Keycloak, la pone en
+  `APP_URL_PUBLICA` (la de `pro.<dominio>/tareas` queda en
+  `APP_URLS_ALTERNATIVAS` y sigue valiendo) y, si la dirección acaba en
+  `/tareas`, pone `APP_RUTA_BASE=/tareas` (el portal de delante no avisa de la ruta);
+- con `GRUPO`, cambia quién entra (`KEYCLOAK_GRUPO_APP`): p. ej. `Tareas`, el
+  grupo que ya usaba la instalación de antes, en vez de `PRO/Tareas`;
+- con `ALIAS`, PRO responde también a ese nombre en la red del proxy
+  (`ALIAS_PUBLICO`) y se **para** (no se borra) lo que respondía a él; el
+  portal no se toca. Necesita una versión de PRO que ya traiga este cambio;
+- vuelve a arrancar PRO y comprueba que responde por ese nombre. Si algo
+  falla, deja todo como estaba y vuelve a arrancar la instalación de antes.
+
+Volver a la de antes a mano: `docker start <su contenedor>`, y en `pro/.env` y
+`pro/app.env` quitar lo que puso `publicar`.
 
 ## Pasar una versión al cliente
 
