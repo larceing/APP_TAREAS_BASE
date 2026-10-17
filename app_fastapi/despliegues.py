@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Modulo opcional MODULO_DESPLIEGUES: el panel de Ajustes del servidor
-(/servidor/, el boton Ajustes de la portada, solo IT global). Las versiones
+(/ajustes/ en la raiz del dominio, el boton Ajustes de la portada, solo IT global). Las versiones
 de TODAS las apps del servidor en DEV y PRO, sin terminal.
 
 No despliega nada por si mismo: habla con GitHub (los workflows y las
@@ -530,7 +530,7 @@ def version_de_url(url: str) -> dict:
 
 
 def panel() -> dict:
-    """Todo lo que pinta /servidor/; los fallos de GitHub van en 'error' (o
+    """Todo lo que pinta /ajustes/; los fallos de GitHub van en 'error' (o
     en el 'error' de cada app) en vez de romper la pagina."""
     from concurrent.futures import ThreadPoolExecutor
     a = ajustes()

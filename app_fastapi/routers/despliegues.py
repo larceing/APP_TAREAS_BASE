@@ -1,25 +1,44 @@
 # -*- coding: utf-8 -*-
-"""Ajustes del servidor (/servidor/, modulo opcional MODULO_DESPLIEGUES): las
-versiones de todas las apps del servidor en DEV y PRO, pasar a PRO, volver
-atras y aprobar, todo a traves de GitHub (ver despliegues.py). Lo abre el
-boton Ajustes de la portada de cada entorno. Solo IT global
-(auth.requiere_admin_global): ser Admin de una sola app no basta."""
+"""Ajustes del servidor (modulo opcional MODULO_DESPLIEGUES): las versiones
+de todas las apps del servidor en DEV y PRO, pasar a PRO, volver atras y
+aprobar, todo a traves de GitHub (ver despliegues.py). Lo abre el boton
+Ajustes de la portada. Solo IT global (auth.requiere_admin_global): ser
+Admin de una sola app no basta.
+
+Vive en /ajustes/ de la raiz del dominio (https://pro.dominio/ajustes/), no
+dentro de /tareas/: es del servidor, no de Tareas, aunque lo sirva esta app.
+La entrada lo manda aqui sin X-Forwarded-Prefix (ruta_base lo deja pasar
+tal cual) y con X-Ruta-App, donde esta Tareas, para el login y Salir. La
+pagina (servidor.html) no lleva nada de Tareas: ni su menu ni su nombre."""
 from fastapi import APIRouter, Depends
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from .. import auth, despliegues
+from .. import auth, config, despliegues, ruta_base
 from ..flash import flash
 from ..templating import templates
 
-router = APIRouter(prefix="/servidor", tags=["despliegues"])
+router = APIRouter(prefix="/ajustes", tags=["despliegues"])
 _solo_it = [Depends(auth.requiere_admin_global)]
 
 _NOMBRE = {"dev": "DEV", "pro": "PRO"}
 
 
 def _volver() -> RedirectResponse:
-    return RedirectResponse(url="/servidor/", status_code=303)
+    return RedirectResponse(url="/ajustes/", status_code=303)
+
+
+def _raiz(request: Request) -> str:
+    """https://<el dominio por el que se ha entrado>, sin la ruta de Tareas."""
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    host = request.headers.get("host", "")
+    return f"{proto}://{host}" if host else ""
+
+
+def _ruta_app(request: Request) -> str:
+    """Donde esta Tareas en este dominio (/tareas, o nada si va en su propio
+    dominio): lo dice la entrada en X-Ruta-App, si no APP_RUTA_BASE."""
+    return ruta_base._normalizar(request.headers.get("x-ruta-app", "")) or ruta_base.ruta_base()
 
 
 @router.get("/acceso/")
@@ -31,13 +50,33 @@ def acceso(request: Request):
                          "admin": auth.es_admin_global_sesion(request)}, headers={"Cache-Control": "no-store"})
 
 
-@router.get("/", dependencies=_solo_it)
-def ver_panel(request: Request, usuario: str = Depends(auth.requiere_login)):
-    return templates.TemplateResponse(request, "servidor.html", {
-        "usuario": usuario, "activo": "servidor", "despliegue": despliegues.panel()})
+def _usuario(request: Request) -> str:
+    return request.session.get("usuario") or ""
 
 
-@router.post("/ajustes/", dependencies=_solo_it)
+def _es_admin(request: Request) -> bool:
+    return auth.es_admin_global_sesion(request)
+
+
+@router.get("/")
+def ver_panel(request: Request, usuario: str = Depends(_usuario), admin: bool = Depends(_es_admin)):
+    """Sin sesion no se manda al /login/ de siempre (en la raiz no hay
+    Tareas): al de Tareas, y sin permiso se dice aqui mismo."""
+    if request.scope.get("ruta_base"):
+        # entrado por /tareas/ajustes/ (despues del login, o un enlace viejo):
+        # a la de la raiz del dominio, que es la buena
+        return RedirectResponse(url=_raiz(request) + "/ajustes/", status_code=303)
+    ruta_app = _ruta_app(request)
+    if not usuario:
+        # el login es el de Tareas; al acabar vuelve aqui
+        return RedirectResponse(url=ruta_app + "/login/?next=/ajustes/", status_code=303)
+    datos = {"usuario": usuario, "ruta_app": ruta_app, "portada": "/" if request.headers.get("x-ruta-app") else (config.app_url_portal() or "/")}
+    if not admin:
+        return templates.TemplateResponse(request, "servidor.html", dict(datos, sin_permiso=True), status_code=403)
+    return templates.TemplateResponse(request, "servidor.html", dict(datos, despliegue=despliegues.panel()))
+
+
+@router.post("/github/", dependencies=_solo_it)
 async def guardar_ajustes(request: Request):
     form = await request.form()
     try:
@@ -163,3 +202,15 @@ async def app_dominio(request: Request):
     except despliegues.DespliegueError as e:
         flash(request, "error", str(e))
     return _volver()
+
+
+# ── la direccion de antes (/tareas/servidor/) ────────────────────────────────
+# Las portadas que aun no se han rehecho (tareas.sh portada) preguntan aqui.
+
+antiguo = APIRouter(prefix="/servidor", tags=["despliegues"])
+antiguo.add_api_route("/acceso/", acceso, methods=["GET"])
+
+
+@antiguo.get("/")
+def a_ajustes(request: Request):
+    return RedirectResponse(url=_raiz(request) + "/ajustes/", status_code=303)

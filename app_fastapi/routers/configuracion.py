@@ -81,7 +81,7 @@ def ver_configuracion(request: Request, tipo: str = "empresas", usuario: str = D
     if tab_activo in _MODULO_DE_TAB and not config.modulo_activo(_MODULO_DE_TAB[tab_activo]):
         tab_activo = "empresas"  # pestaña de un modulo apagado (ver config.py)
     if tab_activo == "despliegues":  # ahora es la pagina Ajustes del servidor (boton de la portada)
-        return RedirectResponse(url="/servidor/", status_code=303)
+        return RedirectResponse(url="/ajustes/", status_code=303)
     conteos = db.get_conteos_pendientes()
     conteos["sistema"] = db.count_backups()  # el nav llama "sistema" a la pestana de Backups
     conteos["api"] = len(db.load_api_tokens())

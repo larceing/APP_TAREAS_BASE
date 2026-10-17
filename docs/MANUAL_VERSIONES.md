@@ -1,7 +1,8 @@
 # Versiones y aplicaciones, sin terminal
 
 Todo se hace desde la portada de DEV o de PRO (`https://dev.tudominio.com/`,
-`https://pro.tudominio.com/`): arriba a la derecha, **⚙ Ajustes**. Solo lo ve
+`https://pro.tudominio.com/`): arriba a la derecha, **⚙ Ajustes**, que abre
+`https://pro.tudominio.com/ajustes/` (el mismo desde las dos portadas). Solo lo ve
 quien está en el grupo `IT` de Keycloak; el Admin de una sola app no lo ve. No
 hace falta entrar en GitHub ni en el servidor: el panel se lo pide a GitHub por
 detrás y te enseña el resultado.

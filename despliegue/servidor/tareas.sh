@@ -190,11 +190,14 @@ YAML
   umask 077
 }
 
-# nginx de la entrada: portada en /, una app por ruta (apps/*.conf) y una
-# pagina clara cuando la app no responde (aun sin desplegar, arrancando...)
+# nginx de la entrada: portada en /, Ajustes del servidor en /ajustes/, una
+# app por ruta (apps/*.conf) y una pagina clara cuando la app no responde
+# (aun sin desplegar, arrancando...). /ajustes/ lo sirve Tareas, pero va en
+# la raiz y sin X-Forwarded-Prefix: es del servidor, no de Tareas. Con
+# X-Ruta-App sabe donde mandar a entrar y a salir.
 escribir_entrada_conf() {
-  cat > "$DIR/entrada/$1/default.conf" <<'NGINX'
-# Entrada del entorno: portada en / y una app por ruta (apps/*.conf)
+  cat > "$DIR/entrada/$1/default.conf" <<NGINX
+# Entrada del entorno: portada en /, Ajustes en /ajustes/ y una app por ruta (apps/*.conf)
 server {
   listen 80;
   client_max_body_size 50m;
@@ -202,9 +205,34 @@ server {
   error_page 502 503 504 /no-disponible.html;
   location = / { root /etc/nginx/conf.d/html; try_files /index.html =404; }
   location = /no-disponible.html { root /etc/nginx/conf.d/html; internal; }
+  location = /ajustes { return 308 /ajustes/; }
+  location /ajustes/ {
+    set \$destino http://tareas-$1:8000;
+    proxy_pass \$destino;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+    proxy_set_header X-Ruta-App /tareas;
+  }
   include /etc/nginx/conf.d/apps/*.conf;
 }
 NGINX
+}
+
+# Direccion de la portada de un entorno (https://pro.dominio): la de Tareas
+# en la entrada (.../tareas) quitando /tareas. Si Tareas tiene ya su propio
+# dominio, la de antes quedo en APP_URLS_ALTERNATIVAS. PORTADA_URL en
+# <ent>/.env manda sobre todo. Vacio si no se sabe.
+url_portada() {
+  local u
+  u=$(var "$DIR/$1/.env" PORTADA_URL)
+  [[ -n "$u" ]] && { echo "${u%/}"; return; }
+  for u in $(var "$DIR/$1/app.env" APP_URLS_ALTERNATIVAS | tr ',' ' ') $(var "$DIR/$1/app.env" APP_URL_PUBLICA); do
+    u=${u%/}
+    [[ "$u" == https://*/tareas ]] && { echo "${u%/tareas}"; return; }
+  done
+  echo ""
 }
 
 # Estilos comunes de la portada y de la pagina de "no disponible"
@@ -260,12 +288,15 @@ escribir_portada() {
     lista+="<a class=\"app\" href=\"$ruta\" data-salud=\"$ruta${salud#/}\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
   done
   [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
-  # Arriba a la derecha (lo pregunta a Tareas, /tareas/servidor/acceso/):
+  # Arriba a la derecha (lo pregunta a /ajustes/acceso/, que contesta Tareas):
   # quien ha entrado y "Salir" para cambiar de usuario, y Ajustes del servidor
-  # solo si es IT global (la pagina lo vuelve a comprobar)
-  local ajustes=""
+  # solo si es IT global (la pagina lo vuelve a comprobar). Ajustes es uno
+  # solo, el de PRO, que lleva DEV y PRO de todas las apps: desde DEV tambien
+  # se va alli.
+  local ajustes="" panel
+  panel="$(url_portada pro)/ajustes/"
   [[ -f "$DIR/entrada/$ent/apps/tareas.conf" ]] && \
-    ajustes='<div class="sesion" id="sesion" hidden><span id="quien"></span><a class="salir" id="salir" href="/tareas/login/">Entrar</a><a class="ajustes" id="ajustes" href="/tareas/servidor/" hidden>⚙ Ajustes</a></div>'
+    ajustes="<div class=\"sesion\" id=\"sesion\" hidden><span id=\"quien\"></span><a class=\"salir\" id=\"salir\" href=\"/tareas/login/?next=/portada/\">Entrar</a><a class=\"ajustes\" id=\"ajustes\" href=\"$panel\" hidden>⚙ Ajustes</a></div>"
   case $ent in
     pro) titulo=Producción; sub="Las aplicaciones en uso. Entra con tu usuario de siempre." ;;
     dev) titulo=Pruebas; sub="Versiones en pruebas: los datos de aquí no son los reales." ;;
@@ -295,14 +326,14 @@ document.querySelectorAll(".app[data-salud]").forEach(function (a) {
 });
 var sesion = document.getElementById("sesion");
 if (sesion) {
-  fetch("/tareas/servidor/acceso/", { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" } })
+  fetch("/ajustes/acceso/", { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" } })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (!d) return;
       if (d.usuario) {
         document.getElementById("quien").textContent = d.usuario;
         var salir = document.getElementById("salir");
-        salir.textContent = "Salir"; salir.href = "/tareas/logout/"; salir.title = "Cerrar sesión para entrar con otro usuario";
+        salir.textContent = "Salir"; salir.href = "/tareas/logout/?a=portada"; salir.title = "Cerrar sesión para entrar con otro usuario";
       }
       if (d.admin === true) document.getElementById("ajustes").hidden = false;
       sesion.hidden = false;
