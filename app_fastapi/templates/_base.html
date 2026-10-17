@@ -9,6 +9,7 @@
      para que se distinga a simple vista en la pestaña del navegador. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237c3aed'/%3E%3Cpath d='M17.5 5 8 18h6.2l-1.7 9L24 14h-6.5z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/css/main.css">
+{% if app_tema_css() %}<link rel="stylesheet" href="{{ app_tema_css() }}">{% endif %}
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -18,6 +19,7 @@
     <div class="header-left">
         <button class="sidebar-toggle" id="sidebarToggle" title="Mostrar/ocultar menú">{{ icon("menu", 18) }}</button>
         <a href="/" class="app-title"><img src="{{ app_logo() }}" alt="{{ app_empresa() }}" class="app-logo">{{ app_nombre() }}</a>
+        {% if app_url_portal() %}<a href="{{ app_url_portal() }}" class="header-portal-btn" title="Volver a la portada">&larr; Aplicaciones</a>{% endif %}
     </div>
     <div class="header-center">
         <div class="global-search-wrap">

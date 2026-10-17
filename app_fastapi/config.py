@@ -33,6 +33,18 @@ def app_logo() -> str:
     return os.getenv("APP_LOGO", "").strip() or "/static/img/logo.svg"
 
 
+def app_tema_css() -> str:
+    """Hoja de estilos extra que se carga tras main.css (colores de la marca de
+    esta instalacion; puede ser una URL de otro sitio). Vacia = el aspecto de serie."""
+    return os.getenv("APP_TEMA_CSS", "").strip()
+
+
+def app_url_portal() -> str:
+    """Portada desde la que se llega a esta app (boton "Aplicaciones" en la
+    cabecera). Vacia = sin boton."""
+    return os.getenv("APP_URL_PORTAL", "").strip()
+
+
 def app_version() -> str:
     """Version desplegada (APP_VERSION, la pone el Dockerfile al construir la
     imagen: v1.2.0 en una release, sha-1a2b3c4 en main). Sin imagen: local."""

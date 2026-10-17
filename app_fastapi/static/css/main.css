@@ -52,6 +52,8 @@ button { cursor: pointer; font-family: inherit; }
     position: sticky; top: 0; z-index: 100;
 }
 .header-left { display: flex; align-items: center; gap: 10px; }
+.header-portal-btn { padding: 5px 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,.1); color: #fff; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.header-portal-btn:hover { background: rgba(255,255,255,.2); }
 .header-center { flex: 1; display: flex; justify-content: center; }
 .global-search-wrap { position: relative; width: 380px; }
 .global-search-wrap input {

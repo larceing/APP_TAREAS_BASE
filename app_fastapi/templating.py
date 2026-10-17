@@ -20,6 +20,8 @@ templates.env.globals["app_nombre"] = config.app_nombre
 templates.env.globals["app_empresa"] = config.app_empresa
 templates.env.globals["app_logo"] = config.app_logo
 templates.env.globals["app_version"] = config.app_version
+templates.env.globals["app_tema_css"] = config.app_tema_css
+templates.env.globals["app_url_portal"] = config.app_url_portal
 templates.env.globals["modulo_activo"] = config.modulo_activo
 # entorno_actual() se llama directamente desde _base.html (desplegable de
 # usuario + banner "modo pruebas") -- global en vez de tener que meterlo a
