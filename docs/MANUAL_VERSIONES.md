@@ -1,8 +1,14 @@
 # Versiones y aplicaciones, sin terminal
 
-Todo se hace desde la app, en **Configuración → Despliegues** (solo IT). No hace
-falta entrar en GitHub ni en el servidor: el panel se lo pide a GitHub por
+Todo se hace desde la portada de DEV o de PRO (`https://dev.tudominio.com/`,
+`https://pro.tudominio.com/`): arriba a la derecha, **⚙ Ajustes**. Solo lo ve
+quien está en el grupo `IT` de Keycloak; el Admin de una sola app no lo ve. No
+hace falta entrar en GitHub ni en el servidor: el panel se lo pide a GitHub por
 detrás y te enseña el resultado.
+
+En Ajustes hay **una tarjeta por aplicación** (Tareas, las creadas desde aquí y
+las que tienen su propio repositorio), cada una con su versión en DEV y en PRO
+y los mismos botones.
 
 ## Lo que tienes que saber
 
@@ -19,26 +25,27 @@ detrás y te enseña el resultado.
 ### Pasar a PRO lo que ya funciona en DEV
 
 1. Prueba en DEV lo que hayas cambiado.
-2. En el panel, **Pasar a PRO lo que hay en DEV**: elige *Arreglos* (lo
-   normal), escribe si quieres en una frase qué cambia y pulsa **Pasar a PRO**.
-3. Espera unos 5 minutos: la tarjeta de PRO enseña la versión nueva con el
+2. En la tarjeta de la app, pulsa **Pasar a PRO**. En Tareas eliges antes qué
+   trae (*Arreglos* es lo normal); las demás apps ponen en PRO justo la versión
+   que tiene DEV.
+3. Espera unos 5 minutos: la casilla de PRO enseña la versión nueva con el
    punto verde. Ya está.
 
-Si quitas la casilla *Ponerla en PRO sola*, la versión se queda esperando y
-arriba sale un aviso amarillo con el botón **Aprobar**, para elegir tú el
-momento.
+Si en algún momento sale un aviso amarillo con **Aprobar**, es una versión
+esperando tu visto bueno para PRO: púlsalo.
 
 ### Algo ha ido mal en PRO
 
-En la tarjeta de PRO, pulsa **↩ Volver a la anterior**. En unos minutos PRO
-vuelve a estar como antes. (DEV tiene el mismo botón.)
+En la tarjeta de la app, en PRO, pulsa **↩ Anterior**. En unos minutos PRO
+vuelve a estar como antes. (DEV tiene el mismo botón.) Si una app no lo
+tiene, escribe la versión de antes y pulsa **Poner**.
 
 ### Saber qué ha pasado
 
-- Las tarjetas de DEV y PRO dicen qué versión tienen. El punto verde quiere
-  decir que responden.
-- **Últimas ejecuciones** dice si cada paso fue *bien* o *falló*. *detalle*
-  abre lo que pasó.
+- Cada tarjeta dice qué versión tiene la app en DEV y en PRO. El punto verde
+  quiere decir que responde.
+- En la de Tareas, **Últimas ejecuciones y versiones** dice si cada paso fue
+  *bien* o *falló*. *detalle* abre lo que pasó.
 
 ## Otras aplicaciones
 
@@ -47,7 +54,7 @@ inicio de sesión de siempre (Keycloak).
 
 ### Crear una
 
-En **Otras aplicaciones → Crear una aplicación**:
+En **Ajustes → Crear una aplicación nueva**:
 
 - **Nombre**: lo que se ve en la portada (*Inventario*).
 - **Ruta**: cómo se llega a ella (`inventario` → `dev.tudominio.com/inventario/`).
@@ -57,7 +64,7 @@ En **Otras aplicaciones → Crear una aplicación**:
   deja los que vienen.
 
 Pulsa **Crear**. En *Últimas peticiones* sale *hecho* cuando está lista. Para
-que funcione hay que ponerle una versión: en su fila, escribe la versión en DEV
+que funcione hay que ponerle una versión: en su tarjeta, escribe la versión en DEV
 (p. ej. `v1.0.0`) y pulsa **Poner**. Cuando va bien en DEV, haz lo mismo en PRO.
 
 ### Quién puede entrar
@@ -67,9 +74,14 @@ app tiene sus grupos: `/DEV/Inventario` y `/PRO/Inventario`, y dentro `Admin`
 para quien la administra. Abre la persona → *Groups* → *Join group*. Quien está
 en `IT` entra en todas.
 
-### Volver atrás una app
+### Añadir una app que ya tiene su propio repositorio
 
-En su fila, el botón **↩** del entorno que quieras.
+Si la app se despliega con su propio workflow de GitHub (otro proyecto), no
+hace falta tocarla: **Ajustes → Añadir una app que ya existe**, con su ruta en
+la portada, su repositorio, el nombre del fichero del workflow y cómo llama
+ese workflow a los campos del entorno y de la versión (te lo dice quien la
+programa). El token de *Conexión con GitHub* tiene que ver también ese
+repositorio: en GitHub, edita el token y añádelo en *Repository access*.
 
 ## Darle a una app su propio dominio
 
