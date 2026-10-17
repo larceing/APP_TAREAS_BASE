@@ -143,20 +143,36 @@ def _usuario_de_keycloak(issuer: str, access_token: str):
 # hace falta validar la firma del token). Si la persona ya entro en otra app
 # del mismo realm, Keycloak no vuelve a pedir la contraseña.
 
-def sso_redirect_uri() -> str:
-    return os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/") + "/login/sso/"
+def url_publica(host: str = "") -> str:
+    """Direccion publica de la app. Si la app tiene mas de una (su dominio
+    propio en APP_URL_PUBLICA y la de antes en APP_URLS_ALTERNATIVAS, separadas
+    por comas), la del host por el que ha entrado la peticion; si no, la
+    principal. Asi el login vuelve siempre al mismo sitio desde el que se fue."""
+    from urllib.parse import urlparse
+    principal = os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/")
+    host = (host or "").strip().lower()
+    if host:
+        for u in [principal] + os.getenv("APP_URLS_ALTERNATIVAS", "").split(","):
+            u = u.strip().rstrip("/")
+            if u and urlparse(u).netloc.lower() == host:
+                return u
+    return principal
 
 
-def sso_url_login(state: str) -> str:
+def sso_redirect_uri(host: str = "") -> str:
+    return url_publica(host) + "/login/sso/"
+
+
+def sso_url_login(state: str, host: str = "") -> str:
     from urllib.parse import urlencode
     issuer = os.getenv("KEYCLOAK_ISSUER", "")
     return f"{issuer}/protocol/openid-connect/auth?" + urlencode({
         "client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "response_type": "code",
-        "scope": "openid", "redirect_uri": sso_redirect_uri(), "state": state,
+        "scope": "openid", "redirect_uri": sso_redirect_uri(host), "state": state,
     })
 
 
-def sso_completar(code: str):
+def sso_completar(code: str, host: str = ""):
     """(None, False, "") si Keycloak no acepta el code; (username, es_it,
     id_token) si si. El id_token se guarda en la sesion para cerrar la de
     Keycloak sin pantalla de confirmar. Igual que verificar_credenciales, da
@@ -169,7 +185,7 @@ def sso_completar(code: str):
             f"{issuer}/protocol/openid-connect/token",
             data={
                 "grant_type": "authorization_code", "code": code,
-                "redirect_uri": sso_redirect_uri(),
+                "redirect_uri": sso_redirect_uri(host),
                 "client_id": os.getenv("KEYCLOAK_CLIENT_ID"),
                 "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
             },
@@ -188,13 +204,13 @@ def sso_completar(code: str):
     return usuario, es_it, (id_token if isinstance(id_token, str) else "")
 
 
-def sso_url_logout(id_token: str = "") -> str:
+def sso_url_logout(id_token: str = "", host: str = "") -> str:
     """Cierra tambien la sesion de Keycloak (si no, la siguiente visita entraria
     sola) y vuelve a SSO_URL_SALIDA (la portada) o a la propia app. Con el
     id_token del login (id_token_hint) Keycloak cierra sin preguntar."""
     from urllib.parse import urlencode
     issuer = os.getenv("KEYCLOAK_ISSUER", "")
-    salida = os.getenv("SSO_URL_SALIDA", "").strip() or os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/") + "/"
+    salida = os.getenv("SSO_URL_SALIDA", "").strip() or url_publica(host) + "/"
     params = {"client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "post_logout_redirect_uri": salida}
     if id_token:
         params["id_token_hint"] = id_token

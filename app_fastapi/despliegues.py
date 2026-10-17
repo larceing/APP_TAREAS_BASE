@@ -17,6 +17,7 @@ from . import db
 from .nexus import cripto
 
 ENTORNOS = ("dev", "pro")
+WORKFLOW_APPS = "apps.yml"   # .github/workflows/apps.yml: otras apps del servidor
 API = "https://api.github.com"
 TIMEOUT = 10
 _CIFRADO = "cifrado:"
@@ -193,6 +194,83 @@ def preparar_entornos() -> None:
         _github("PUT", f"/environments/{e}", json=cuerpo)
 
 
+# ── otras apps (workflow apps.yml -> tareas.sh app-nueva/app-desplegar/dominio)
+
+_RUTA_APP = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+_DOMINIO = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
+_NOMBRE_APP = re.compile(r"^[\w\s.()-]{1,60}$")
+
+
+def apps() -> list[dict]:
+    """Las apps creadas desde el panel (ruta, nombre, imagen)."""
+    import json
+    try:
+        datos = json.loads(db.get_ajuste(_PREFIJO + "apps", "[]", real=USAR_BD_REAL) or "[]")
+    except ValueError:
+        datos = []
+    return [a for a in datos if isinstance(a, dict) and _RUTA_APP.match(a.get("ruta", ""))]
+
+
+def _guardar_app(ruta: str, nombre: str, imagen: str) -> None:
+    import json
+    lista = [a for a in apps() if a["ruta"] != ruta] + [{"ruta": ruta, "nombre": nombre, "imagen": imagen}]
+    db.set_ajuste(_PREFIJO + "apps", json.dumps(sorted(lista, key=lambda a: a["ruta"])), real=USAR_BD_REAL)
+
+
+def _pedir_apps(inputs: dict) -> None:
+    _github("POST", f"/actions/workflows/{WORKFLOW_APPS}/dispatches",
+            json={"ref": ajustes()["rama"], "inputs": {k: v for k, v in inputs.items() if v}})
+
+
+def app_nueva(form: dict) -> str:
+    ruta = (form.get("ruta") or "").strip().lower().strip("/")
+    nombre = (form.get("nombre") or "").strip() or ruta.capitalize()
+    imagen = (form.get("imagen") or "").strip().lower()
+    puerto = (form.get("puerto") or "8000").strip()
+    salud = (form.get("salud") or "").strip().lstrip("/")
+    if not _RUTA_APP.match(ruta) or ruta in ("tareas", "auth", "version"):
+        raise DespliegueError("La ruta va en minúsculas, con letras, números o guiones (p. ej. inventario), y no puede ser tareas.")
+    if not _NOMBRE_APP.match(nombre):
+        raise DespliegueError("El nombre: hasta 60 letras, números, espacios, puntos, guiones o paréntesis.")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9./_-]+", imagen) or ":" in imagen:
+        raise DespliegueError("La imagen va sin versión, p. ej. ghcr.io/usuario/inventario.")
+    if not re.fullmatch(r"\d{2,5}", puerto):
+        raise DespliegueError("El puerto es un número (p. ej. 8000).")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]*", salud):
+        raise DespliegueError("El camino de comprobación solo lleva letras, números, / . _ -")
+    _pedir_apps({"accion": "nueva", "app": ruta, "nombre": nombre, "imagen": imagen, "puerto": puerto, "salud": salud})
+    _guardar_app(ruta, nombre, imagen)
+    return ruta
+
+
+def app_desplegar(ruta: str, entorno: str, version: str) -> None:
+    version = (version or "").strip()
+    if ruta not in {a["ruta"] for a in apps()}:
+        raise DespliegueError("Esa app no está creada desde este panel.")
+    if entorno not in ENTORNOS:
+        raise DespliegueError("Entorno desconocido.")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", version):
+        raise DespliegueError("Versión no válida.")
+    _pedir_apps({"accion": "desplegar", "app": ruta, "entorno": entorno, "version": version})
+
+
+def app_dominio(ruta: str, dominio: str) -> str:
+    dominio = (dominio or "").strip().lower().removeprefix("https://").removeprefix("http://").split("/")[0]
+    if ruta != "tareas" and ruta not in {a["ruta"] for a in apps()}:
+        raise DespliegueError("Elige una app de la lista.")
+    if not _DOMINIO.match(dominio):
+        raise DespliegueError("El dominio va sin https://, p. ej. inventario.midominio.com.")
+    _pedir_apps({"accion": "dominio", "app": ruta, "dominio": dominio})
+    return dominio
+
+
+def ejecuciones_apps(limite: int = 6) -> list[dict]:
+    datos = _github("GET", f"/actions/workflows/{WORKFLOW_APPS}/runs?per_page={limite}") or {}
+    return [{"id": r["id"], "titulo": r.get("display_title") or r.get("name", ""), "estado": r.get("status", ""),
+             "resultado": r.get("conclusion") or "", "url": r.get("html_url", ""),
+             "fecha": (r.get("created_at") or "").replace("T", " ")[:16]} for r in datos.get("workflow_runs", [])]
+
+
 # ── version de cada entorno (GET <url>/version/) ─────────────────────────────
 
 def version_de(url: str) -> dict:
@@ -212,11 +290,15 @@ def panel() -> dict:
     a = ajustes()
     datos = {"ajustes": a, "configurado": configurado(a), "error": "",
              "entornos": [{"nombre": e, "url": a[f"url_{e}"], **version_de(a[f"url_{e}"])} for e in ENTORNOS],
-             "versiones": [], "ejecuciones": []}
+             "versiones": [], "ejecuciones": [], "apps": apps(), "ejecuciones_apps": []}
     if datos["configurado"]:
         try:
             datos["versiones"] = versiones()
             datos["ejecuciones"] = ejecuciones()
         except DespliegueError as e:
             datos["error"] = str(e)
+        try:
+            datos["ejecuciones_apps"] = ejecuciones_apps()
+        except DespliegueError:
+            pass  # sin apps.yml en el repositorio todavia: la seccion sale vacia
     return datos

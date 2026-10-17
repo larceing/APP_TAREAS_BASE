@@ -2274,6 +2274,7 @@ class DespliegueVersionTests(unittest.TestCase):
         with patch.dict("os.environ", {"APP_VERSION": "v9.9.9"}):
             r = TestClient(app, follow_redirects=False).get("/version/")
         self.assertEqual((r.status_code, r.json()), (200, {"version": "v9.9.9"}))
+        self.assertEqual(TestClient(app, follow_redirects=False).head("/version/").status_code, 200)
 
     def test_la_version_se_ve_en_el_login(self):
         with patch.dict("os.environ", {"APP_VERSION": "v9.9.9", "AUTH_MODO": "local"}):
@@ -2354,7 +2355,8 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         runs = {"workflow_runs": [{"id": 7, "display_title": "v1.4.0", "event": "release", "status": "waiting",
                                    "conclusion": None, "html_url": "https://x", "created_at": "2026-10-16T10:00:00Z"}]}
         pendientes = [{"environment": {"id": 55, "name": "pro"}, "current_user_can_approve": True}]
-        mock.side_effect = [_respuesta(200, [{"tag_name": "v1.4.0"}]), _respuesta(200, runs), _respuesta(200, pendientes)]
+        mock.side_effect = [_respuesta(200, [{"tag_name": "v1.4.0"}]), _respuesta(200, runs), _respuesta(200, pendientes),
+                            _respuesta(200, {"workflow_runs": []})]
         html = self.client.get("/configuracion/?tipo=despliegues").text
         self.assertIn("espera aprobación para <b>PRO</b>", html)
         self.assertIn("v1.3.0", html)
@@ -2380,6 +2382,39 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         self.assertEqual(llamadas[2], ("https://api.github.com/repos/alguien/app/environments/pro",
                                        {"reviewers": [{"type": "User", "id": 42}]}))
         self.assertEqual(llamadas[1][1], {})
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_crear_app_lanza_apps_yml_y_la_recuerda(self, mock):
+        mock.return_value = _respuesta(204)
+        self.client.post("/configuracion/despliegues/apps/nueva/", data={
+            "nombre": "Inventario", "ruta": "inventario", "imagen": "ghcr.io/Alguien/Inventario", "puerto": "8080", "salud": "/salud"})
+        self.assertTrue(mock.call_args.args[1].endswith("/actions/workflows/apps.yml/dispatches"))
+        self.assertEqual(mock.call_args.kwargs["json"]["inputs"], {
+            "accion": "nueva", "app": "inventario", "nombre": "Inventario", "imagen": "ghcr.io/alguien/inventario",
+            "puerto": "8080", "salud": "salud"})
+        self.assertEqual([a["ruta"] for a in self.d.apps()], ["inventario"])
+        # poner una version y volver atras
+        self.client.post("/configuracion/despliegues/apps/desplegar/", data={"ruta": "inventario", "entorno": "pro", "version": "anterior"})
+        self.assertEqual(mock.call_args.kwargs["json"]["inputs"],
+                         {"accion": "desplegar", "app": "inventario", "entorno": "pro", "version": "anterior"})
+        # dominio propio (tambien para esta app)
+        self.client.post("/configuracion/despliegues/apps/dominio/", data={"ruta": "tareas", "dominio": "https://Tareas.Ejemplo.com/"})
+        self.assertEqual(mock.call_args.kwargs["json"]["inputs"], {"accion": "dominio", "app": "tareas", "dominio": "tareas.ejemplo.com"})
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_apps_con_datos_raros_no_llegan_a_github(self, mock):
+        mock.return_value = _respuesta(204)
+        malos = [
+            ("/apps/nueva/", {"nombre": "X", "ruta": "Mal Ruta", "imagen": "ghcr.io/a/b"}),
+            ("/apps/nueva/", {"nombre": "X", "ruta": "tareas", "imagen": "ghcr.io/a/b"}),
+            ("/apps/nueva/", {"nombre": "X", "ruta": "buena", "imagen": "ghcr.io/a/b:v1"}),
+            ("/apps/nueva/", {"nombre": "X; rm", "ruta": "buena", "imagen": "ghcr.io/a/b"}),
+            ("/apps/desplegar/", {"ruta": "no-creada", "entorno": "dev", "version": "v1"}),
+            ("/apps/dominio/", {"ruta": "tareas", "dominio": "no es dominio"}),
+        ]
+        for ruta, datos in malos:
+            self.client.post("/configuracion/despliegues" + ruta, data=datos)
+        mock.assert_not_called()
 
 
 # ── ruta_base.py: servir la app bajo /tareas ────────────────────────────────
@@ -2462,6 +2497,17 @@ class SsoTests(EntornoAisladoTestCase):
         self.assertEqual(r.status_code, 307)
         self.assertTrue(r.headers["location"].startswith("http://keycloak.test/realms/demo/protocol/openid-connect/auth?"))
         self.assertIn("redirect_uri=https%3A%2F%2Fapps.test%2Ftareas%2Flogin%2Fsso%2F", r.headers["location"])
+
+    def test_con_dominio_propio_vuelve_por_donde_entro(self):
+        # tras "tareas.sh dominio": la principal es la nueva y la de antes sigue valiendo
+        with patch.dict("os.environ", {"APP_URL_PUBLICA": "https://tareas.test",
+                                       "APP_URLS_ALTERNATIVAS": "https://apps.test/tareas"}):
+            r = TestClient(app, base_url="https://apps.test").get("/login/", follow_redirects=False)
+            self.assertIn("redirect_uri=https%3A%2F%2Fapps.test%2Ftareas%2Flogin%2Fsso%2F", r.headers["location"])
+            r = TestClient(app, base_url="https://tareas.test").get("/login/", follow_redirects=False)
+            self.assertIn("redirect_uri=https%3A%2F%2Ftareas.test%2Flogin%2Fsso%2F", r.headers["location"])
+            r = TestClient(app, base_url="https://otro.test").get("/login/", follow_redirects=False)
+            self.assertIn("redirect_uri=https%3A%2F%2Ftareas.test%2Flogin%2Fsso%2F", r.headers["location"])
 
     def test_state_distinto_no_inicia_sesion(self):
         client = TestClient(app)

@@ -16,6 +16,12 @@
 #                                      login unico con Keycloak en ENT (pide
 #                                      el client secret y vuelve a arrancar)
 #   tareas.sh portada                  rehace la portada de cada entorno
+#   tareas.sh app-nueva RUTA IMAGEN PUERTO [SALUD] [NOMBRE]
+#                                      otra app en DEV y PRO (ruta, login, grupos)
+#   tareas.sh app-desplegar RUTA ENT VERSION   pone (o "anterior") esa version
+#   tareas.sh apps                     estado de esas apps
+#   tareas.sh dominio APP DOMINIO      la app de PRO pasa a su propio dominio
+#   tareas.sh npm-acceso               una vez: usuario de Nginx Proxy Manager
 #
 # ENT = dev | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
 #   <ENT>/.env                secretos y version actual (lo crea "preparar")
@@ -641,8 +647,361 @@ cmd_ci() {
     rollback)  cmd_rollback "${orden[1]:-}" "${orden[2]:-}" ;;
     estado)    cmd_estado ;;
     historial) cmd_historial "${orden[1]:-}" ;;
+    app-nueva) cmd_app_nueva "${orden[@]:1}" ;;
+    app-desplegar) cmd_app_desplegar "${orden[1]:-}" "${orden[2]:-}" "${orden[3]:-}" github ;;
+    apps)      cmd_apps ;;
+    dominio)   cmd_dominio "${orden[1]:-}" "${orden[2]:-}" ;;
     *) die "orden no permitida: ${orden[0]:-(vacía)}" ;;
   esac
+}
+
+# ── otras apps: crear y desplegar (lo pide el panel o el workflow apps.yml) ─
+# Cada app vive en apps/<RUTA>/<ENT>/ (.env con imagen y version, app.env con
+# su login de Keycloak, docker-compose.yml y historial.log) y entra por la
+# entrada de cada entorno en /<RUTA>/ (la ruta le llega ya quitada, con
+# X-Forwarded-Prefix). Usa el mismo Keycloak que Tareas: un cliente
+# <RUTA>-<ENT> y los grupos /DEV/<Grupo> y /PRO/<Grupo> (con Admin).
+
+ruta_valida() {
+  [[ "$1" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || die "ruta no válida: '$1' (minúsculas, números y guiones; p. ej. inventario)"
+  case "$1" in tareas|auth|version|no-disponible) die "la ruta '$1' está reservada";; esac
+}
+
+app_dir() { echo "$DIR/apps/$1/$2"; }
+
+dca() {   # docker compose de una app en un entorno
+  local ruta=$1 ent=$2; shift 2
+  local d; d=$(app_dir "$ruta" "$ent")
+  docker compose --project-directory "$d" -p "$ruta-$ent" -f "$d/docker-compose.yml" "$@"
+}
+
+# direccion publica de cada entorno, sacada del login de Tareas
+# (APP_URL_PUBLICA=https://dev.dominio/tareas -> https://dev.dominio)
+url_entorno() {
+  local u; u=$(var "$DIR/$1/app.env" APP_URL_PUBLICA)
+  [[ -n "$u" ]] || die "no sé la dirección de $1: pon APP_URL_PUBLICA en $DIR/$1/app.env (o conecta antes Tareas a Keycloak)"
+  echo "${u%/tareas}"
+}
+
+kcx() { docker exec -i keycloak /opt/keycloak/bin/kcadm.sh "$@"; }
+
+kc_entrar() {
+  docker inspect keycloak >/dev/null 2>&1 || die "no encuentro el contenedor 'keycloak'"
+  docker exec keycloak sh -c '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080/auth --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"' >/dev/null \
+    || die "no puedo entrar en Keycloak como admin"
+}
+
+kc_grupo() {   # kc_grupo REALM PADRE_ID|"" NOMBRE -> id (lo crea si falta)
+  local realm=$1 padre=$2 nombre=$3 lista id n
+  if [[ -z "$padre" ]]; then lista=groups; else lista="groups/$padre/children"; fi
+  while IFS=, read -r id n; do
+    [[ "$n" == "$nombre" ]] && { echo "$id"; return; }
+  done < <(kcx get "$lista" -r "$realm" --fields id,name --format csv --noquotes 2>/dev/null | tr -d '\r')
+  kcx create "$lista" -r "$realm" -s "name=$nombre" -i | tr -d '\r'
+}
+
+escribir_compose_app() {   # escribir_compose_app RUTA ENT
+  cat > "$(app_dir "$1" "$2")/docker-compose.yml" <<'YAML'
+# Una app en un entorno (lo escribe tareas.sh app-nueva). Sin puertos
+# publicados: entra por la red del proxy con el nombre <ruta>-<entorno>.
+services:
+  app:
+    image: ${IMAGEN:?falta IMAGEN}:${VERSION:?falta VERSION}
+    restart: unless-stopped
+    env_file:
+      - path: app.env
+        required: false
+    mem_limit: ${APP_MEMORIA:-512m}
+    volumes:
+      - datos:/datos
+    networks:
+      proxy:
+        aliases: ["${RUTA}-${ENTORNO}"]
+volumes:
+  datos:
+networks:
+  proxy:
+    name: ${RED_PROXY:-proxy_default}
+    external: true
+YAML
+}
+
+cmd_app_nueva() {   # app-nueva RUTA IMAGEN PUERTO SALUD NOMBRE...
+  local ruta=${1:-} imagen=${2:-} puerto=${3:-} salud=${4:-} ent d base issuer realm grupo
+  shift $(( $# < 4 ? $# : 4 ))
+  local nombre="$*"
+  [[ -n "$ruta" && -n "$imagen" && -n "$puerto" ]] \
+    || die "uso: tareas.sh app-nueva RUTA IMAGEN PUERTO [SALUD] [NOMBRE]   (p. ej. app-nueva inventario ghcr.io/usuario/inventario 8000 salud Inventario)"
+  ruta_valida "$ruta"
+  imagen=${imagen,,}
+  [[ "$imagen" =~ ^[a-z0-9][a-z0-9./_-]+$ ]] || die "imagen no válida: '$imagen'"
+  [[ "$puerto" =~ ^[0-9]{2,5}$ ]] || die "puerto no válido: '$puerto'"
+  [[ -z "$salud" || "$salud" == - ]] && salud=""
+  [[ "$salud" =~ ^[A-Za-z0-9._/-]*$ ]] || die "camino de salud no válido: '$salud'"
+  salud=${salud#/}
+  nombre=${nombre:-${ruta^}}
+  [[ "$nombre" =~ ^[[:alnum:][:space:]._()áéíóúÁÉÍÓÚñÑüÜ-]{1,60}$ ]] || die "nombre no válido: '$nombre'"
+  grupo=${ruta^}
+  local red_proxy; red_proxy=$(var "$DIR/dev/.env" RED_PROXY); red_proxy=${red_proxy:-proxy_default}
+  issuer=$(var "$DIR/dev/app.env" KEYCLOAK_ISSUER)
+  [[ -n "$issuer" ]] || die "Tareas DEV aún no usa Keycloak (tareas.sh keycloak dev ...): de ahí saco la dirección de Keycloak"
+  realm=${issuer##*/}
+  for ent in $ENTORNOS; do
+    local f="$DIR/entrada/$ent/apps/$ruta.conf"
+    if [[ -f "$f" ]] && ! grep -q '^# creada-por: app-nueva' "$f"; then
+      die "ya hay otra app en /$ruta/ ($f): elige otra ruta"
+    fi
+  done
+
+  kc_entrar
+  umask 077
+  for ent in $ENTORNOS; do
+    d=$(app_dir "$ruta" "$ent"); mkdir -p "$d"
+    base=$(url_entorno "$ent")
+    if [[ ! -f "$d/.env" ]]; then
+      cat > "$d/.env" <<EOF
+# $nombre en $ent -- lo crea tareas.sh app-nueva
+RUTA=$ruta
+ENTORNO=$ent
+NOMBRE=$nombre
+IMAGEN=$imagen
+VERSION=
+PUERTO=$puerto
+SALUD=$salud
+RED_PROXY=$red_proxy
+APP_MEMORIA=512m
+EOF
+    else
+      poner_var "$d/.env" IMAGEN "$imagen"; poner_var "$d/.env" PUERTO "$puerto"; poner_var "$d/.env" SALUD "$salud"
+    fi
+    touch "$d/historial.log"
+    escribir_compose_app "$ruta" "$ent"
+
+    # Keycloak: grupos /<ENT>/<Grupo>(/Admin) y el cliente <ruta>-<ent>
+    local E=${ent^^} gE gA gAd cid cliente="$ruta-$ent" secreto
+    gE=$(kc_grupo "$realm" "" "$E"); gA=$(kc_grupo "$realm" "$gE" "$grupo"); gAd=$(kc_grupo "$realm" "$gA" Admin)
+    cid=$(kcx get clients -r "$realm" -q clientId="$cliente" --fields id --format csv --noquotes | tr -d '\r')
+    if [[ -z "$cid" ]]; then
+      cid=$(kcx create clients -r "$realm" -i -f - <<JSON | tr -d '\r'
+{"clientId":"$cliente","name":"$nombre ($E)","enabled":true,"publicClient":false,"standardFlowEnabled":true,"directAccessGrantsEnabled":false,
+ "redirectUris":["$base/$ruta/*"],"webOrigins":["$base"],"attributes":{"post.logout.redirect.uris":"$base/*","login_theme":"keycloak"},
+ "protocolMappers":[{"name":"groups","protocol":"openid-connect","protocolMapper":"oidc-group-membership-mapper",
+  "config":{"claim.name":"groups","full.path":"true","userinfo.token.claim":"true","id.token.claim":"true","access.token.claim":"true"}}]}
+JSON
+)
+      log "$ent: cliente $cliente creado en Keycloak"
+    fi
+    secreto=$(kcx get "clients/$cid/client-secret" -r "$realm" --fields value --format csv --noquotes | tr -d '\r')
+    [[ -f "$d/app.env" ]] || echo "# Configuración de $nombre en $ent (la lee la app). Tras cambiarla: tareas.sh app-desplegar $ruta $ent <versión>" > "$d/app.env"
+    poner_var "$d/app.env" ENTORNO "$ent"
+    poner_var "$d/app.env" APP_URL_PUBLICA "$base/$ruta"
+    poner_var "$d/app.env" AUTH_MODO sso
+    poner_var "$d/app.env" KEYCLOAK_ISSUER "$issuer"
+    poner_var "$d/app.env" KEYCLOAK_CLIENT_ID "$cliente"
+    poner_var "$d/app.env" KEYCLOAK_CLIENT_SECRET "$secreto"
+    poner_var "$d/app.env" KEYCLOAK_GRUPO_APP "$E/$grupo"
+    poner_var "$d/app.env" KEYCLOAK_GRUPO_ADMIN_GLOBAL IT
+    chmod 600 "$d/.env" "$d/app.env"
+
+    # entrada del entorno: /<ruta>/ -> <ruta>-<ent>:<puerto>, sin el prefijo
+    ( umask 022; cat > "$DIR/entrada/$ent/apps/$ruta.conf" <<NGINX
+# app: $nombre
+# salud: ${salud:-version/}
+# creada-por: app-nueva
+location = /$ruta { return 308 /$ruta/; }
+location /$ruta/ {
+  set \$destino $ruta-$ent:$puerto;
+  rewrite ^/$ruta/(.*)\$ /\$1 break;
+  proxy_pass http://\$destino;
+  proxy_http_version 1.1;
+  proxy_set_header Host \$host;
+  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+  proxy_set_header X-Forwarded-Prefix /$ruta;
+  proxy_set_header Upgrade \$http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_read_timeout 300s;
+}
+NGINX
+    )
+  done
+  cmd_portada >/dev/null
+  cat <<EOF
+
+LISTO: $nombre creada en DEV y PRO.
+  DEV: $(url_entorno dev)/$ruta/      PRO: $(url_entorno pro)/$ruta/
+  Keycloak: clientes $ruta-dev y $ruta-pro; grupos /DEV/$grupo y /PRO/$grupo
+            (con /Admin). Para dar acceso: mete a cada persona en esos grupos.
+  Falta poner una versión: tareas.sh app-desplegar $ruta dev <versión de $imagen>
+  Hasta entonces su tarjeta sale como "Sin desplegar".
+EOF
+}
+
+app_sana() {   # app_sana RUTA ENT -> 0 si responde por la entrada
+  local ruta=$1 ent=$2 d puerto salud
+  d=$(app_dir "$ruta" "$ent"); puerto=$(var "$d/.env" PUERTO); salud=$(var "$d/.env" SALUD)
+  docker exec "entrada-$ent" wget -q -T 5 -O /dev/null "http://$ruta-$ent:$puerto/${salud}" 2>/dev/null
+}
+
+cmd_app_desplegar() {   # app-desplegar RUTA ENT VERSION|anterior
+  local ruta=${1:-} ent=${2:-} version=${3:-} origen=${4:-manual}
+  [[ -n "$ruta" && -n "$ent" && -n "$version" ]] || die "uso: tareas.sh app-desplegar RUTA ENT VERSION   (VERSION=anterior para volver atrás)"
+  ruta_valida "$ruta"
+  case " $ENTORNOS " in *" $ent "*) ;; *) die "entorno '$ent' no válido (dev o pro)";; esac
+  local d; d=$(app_dir "$ruta" "$ent")
+  [[ -f "$d/.env" ]] || die "no existe la app '$ruta' (tareas.sh app-nueva ...)"
+  local hist="$d/historial.log" actual imagen
+  actual=$(var "$d/.env" VERSION); imagen=$(var "$d/.env" IMAGEN)
+  if [[ "$version" == anterior ]]; then
+    version=$(awk -F'\t' -v a="$actual" '$3=="ok"&&$2!=a{v=$2} END{print v}' "$hist")
+    [[ -n "$version" ]] || die "no hay una versión anterior buena de $ruta en $ent"
+    origen=rollback
+  fi
+  version_valida "$version"
+  exec 8>"$d/.lock"; flock -w 600 8 || die "otro despliegue de $ruta en $ent no termina"
+  log "$ruta $ent: $imagen:$version (ahora: ${actual:-nada})"
+  traer_imagen "$imagen:$version"
+  poner_var "$d/.env" VERSION "$version"
+  RUTA=$ruta dca "$ruta" "$ent" up -d --remove-orphans
+  local t=0
+  while (( t < ESPERA_SALUD )); do
+    if app_sana "$ruta" "$ent"; then
+      printf '%s\t%s\tok\t%s\n' "$(ahora)" "$version" "$origen" >> "$hist"
+      log "$ruta $ent ya está en $version"
+      return 0
+    fi
+    sleep 5; t=$((t + 5))
+  done
+  printf '%s\t%s\tfallo\t%s\n' "$(ahora)" "$version" "$origen" >> "$hist"
+  dca "$ruta" "$ent" logs --tail 40 app >&2 || true
+  if [[ -n "$actual" && "$actual" != "$version" ]]; then
+    echo "La versión $version de $ruta no responde: vuelvo a $actual." >&2
+    poner_var "$d/.env" VERSION "$actual"
+    dca "$ruta" "$ent" up -d --remove-orphans || true
+  fi
+  exit 1
+}
+
+cmd_apps() {   # estado de las apps creadas con app-nueva
+  local d ruta ent
+  printf '%-14s %-5s %-22s %s\n' APP ENT VERSION ESTADO
+  for d in "$DIR"/apps/*/; do
+    [[ -d "$d" ]] || continue
+    ruta=$(basename "$d")
+    for ent in $ENTORNOS; do
+      [[ -f "$d$ent/.env" ]] || continue
+      printf '%-14s %-5s %-22s %s\n' "$ruta" "$ent" "$(var "$d$ent/.env" VERSION)" "$(app_sana "$ruta" "$ent" && echo responde || echo 'no responde')"
+    done
+  done
+}
+
+# ── dominio propio: una app de PRO pasa a tener su direccion ────────────────
+# Crea el proxy host en Nginx Proxy Manager (con certificado), añade la
+# direccion al cliente de Keycloak de PRO y vuelve a arrancar la app con ella.
+# Las credenciales de NPM se guardan una vez con "tareas.sh npm-acceso".
+
+cmd_npm_acceso() {
+  local email clave
+  read -rp "Email del admin de Nginx Proxy Manager: " email
+  read -rsp "Contraseña: " clave; echo
+  [[ -n "$email" && -n "$clave" ]] || die "faltan datos"
+  umask 077
+  printf 'NPM_EMAIL=%s\nNPM_CLAVE=%s\n' "$email" "$clave" > "$DIR/.npm.env"
+  npm_token >/dev/null && log "acceso a Nginx Proxy Manager guardado en $DIR/.npm.env"
+}
+
+npm_url() {   # la API de NPM, por la IP de su contenedor en la red del proxy
+  local u; u=$(var "$DIR/.npm.env" NPM_URL)
+  [[ -n "$u" ]] && { echo "$u"; return; }
+  local c ip
+  c=$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /nginx-proxy-manager/ {print $1; exit}')
+  [[ -n "$c" ]] || die "no encuentro el contenedor de Nginx Proxy Manager (pon NPM_URL=http://... en $DIR/.npm.env)"
+  ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$c" | awk '{print $1}')
+  echo "http://$ip:81"
+}
+
+npm_token() {
+  [[ -f "$DIR/.npm.env" ]] || die "falta el acceso a Nginx Proxy Manager: ejecuta una vez en el servidor  tareas.sh npm-acceso"
+  NPM_EMAIL=$(var "$DIR/.npm.env" NPM_EMAIL) NPM_CLAVE=$(var "$DIR/.npm.env" NPM_CLAVE) python3 -c '
+import json, os, sys, urllib.request
+r = urllib.request.Request(sys.argv[1] + "/api/tokens", method="POST", headers={"Content-Type": "application/json"},
+    data=json.dumps({"identity": os.environ["NPM_EMAIL"], "secret": os.environ["NPM_CLAVE"]}).encode())
+print(json.load(urllib.request.urlopen(r, timeout=15))["token"])' "$(npm_url)" || die "Nginx Proxy Manager no acepta el usuario guardado (tareas.sh npm-acceso)"
+}
+
+cmd_dominio() {   # dominio APP DOMINIO   (APP = tareas o la ruta de otra app)
+  local app=${1:-} dominio=${2:-} host puerto envapp cliente
+  [[ -n "$app" && -n "$dominio" ]] || die "uso: tareas.sh dominio APP DOMINIO   (p. ej. dominio tareas tareas.midominio.com)"
+  dominio=${dominio,,}; dominio=${dominio#https://}; dominio=${dominio%%/*}
+  [[ "$dominio" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "dominio no válido: '$dominio'"
+  if [[ "$app" == tareas ]]; then
+    host=tareas-pro; puerto=8000; envapp="$DIR/pro/app.env"
+  else
+    ruta_valida "$app"
+    [[ -f "$(app_dir "$app" pro)/.env" ]] || die "no existe la app '$app'"
+    host=$app-pro; puerto=$(var "$(app_dir "$app" pro)/.env" PUERTO); envapp="$(app_dir "$app" pro)/app.env"
+  fi
+  cliente=$(var "$envapp" KEYCLOAK_CLIENT_ID)
+  getent hosts "$dominio" >/dev/null || die "$dominio aún no apunta a ningún sitio: crea antes en tu DNS el registro de $dominio hacia este servidor (sin proxy) y vuelve a probar en unos minutos"
+
+  log "1/3 Nginx Proxy Manager: $dominio -> $host:$puerto con certificado"
+  local token; token=$(npm_token)
+  NPM_TOKEN=$token NPM_EMAIL=$(var "$DIR/.npm.env" NPM_EMAIL) python3 - "$(npm_url)" "$dominio" "$host" "$puerto" <<'PY' || die "Nginx Proxy Manager no pudo crear $dominio (¿el DNS ya apunta aquí? Let's Encrypt lo necesita)"
+import json, os, sys, urllib.request
+url, dominio, host, puerto = sys.argv[1:5]
+cab = {"Authorization": "Bearer " + os.environ["NPM_TOKEN"], "Content-Type": "application/json"}
+def api(metodo, ruta, datos=None):
+    r = urllib.request.Request(url + ruta, method=metodo, headers=cab, data=json.dumps(datos).encode() if datos is not None else None)
+    return json.load(urllib.request.urlopen(r, timeout=180))
+for h in api("GET", "/api/nginx/proxy-hosts"):
+    if dominio in h.get("domain_names", []):
+        print("ya existía en Nginx Proxy Manager"); sys.exit(0)
+api("POST", "/api/nginx/proxy-hosts", {
+    "domain_names": [dominio], "forward_scheme": "http", "forward_host": host, "forward_port": int(puerto),
+    "certificate_id": "new", "ssl_forced": True, "http2_support": True, "block_exploits": True,
+    "allow_websocket_upgrade": True, "access_list_id": 0, "caching_enabled": False,
+    "hsts_enabled": False, "hsts_subdomains": False, "locations": [],
+    "advanced_config": "proxy_buffer_size 128k;\nproxy_buffers 4 256k;",
+    "meta": {"letsencrypt_agree": True, "letsencrypt_email": os.environ["NPM_EMAIL"], "dns_challenge": False}})
+print("creado, con certificado")
+PY
+
+  if [[ -n "$cliente" ]]; then
+    log "2/3 Keycloak: $dominio en el cliente $cliente"
+    kc_entrar
+    local issuer realm cid
+    issuer=$(var "$envapp" KEYCLOAK_ISSUER); realm=${issuer##*/}
+    cid=$(kcx get clients -r "$realm" -q clientId="$cliente" --fields id --format csv --noquotes | tr -d '\r')
+    [[ -n "$cid" ]] || die "no encuentro el cliente $cliente en Keycloak"
+    kcx get "clients/$cid" -r "$realm" | python3 -c '
+import json, sys
+c = json.load(sys.stdin); d = "https://" + sys.argv[1]
+c["redirectUris"] = sorted(set(c.get("redirectUris", [])) | {d + "/*"})
+c["webOrigins"] = sorted(set(c.get("webOrigins", [])) | {d})
+a = c.setdefault("attributes", {}); v = [x for x in a.get("post.logout.redirect.uris", "").split("##") if x]
+a["post.logout.redirect.uris"] = "##".join(sorted(set(v) | {d + "/*"}))
+print(json.dumps(c))' "$dominio" | kcx update "clients/$cid" -r "$realm" -f -
+  else
+    log "2/3 la app no usa Keycloak: nada que cambiar"
+  fi
+
+  log "3/3 la app pasa a usar https://$dominio"
+  # la direccion de antes sigue valiendo (el login vuelve por donde se entró)
+  local antes alt; antes=$(var "$envapp" APP_URL_PUBLICA); alt=$(var "$envapp" APP_URLS_ALTERNATIVAS)
+  if [[ -n "$antes" && "$antes" != "https://$dominio" && ",$alt," != *",$antes,"* ]]; then
+    poner_var "$envapp" APP_URLS_ALTERNATIVAS "${alt:+$alt,}$antes"
+  fi
+  poner_var "$envapp" APP_URL_PUBLICA "https://$dominio"
+  local version
+  if [[ "$app" == tareas ]]; then
+    version=$(var "$DIR/pro/.env" VERSION)
+    [[ -n "$version" ]] && cmd_desplegar pro "$version" dominio
+  else
+    version=$(var "$(app_dir "$app" pro)/.env" VERSION)
+    [[ -n "$version" ]] && cmd_app_desplegar "$app" pro "$version" dominio
+  fi
+  echo
+  echo "LISTO: https://$dominio ya es la dirección de $app en PRO (la de pro.<dominio>/$app sigue funcionando)."
 }
 
 # ── keycloak: login unico (AUTH_MODO=sso) ────────────────────────────────────
@@ -676,7 +1035,7 @@ cmd_keycloak() {
   fi
 }
 
-uso() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+uso() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 case "${1:-}" in
   preparar)   shift; cmd_preparar "$@" ;;
@@ -690,6 +1049,11 @@ case "${1:-}" in
   logs)       shift; cmd_logs "$@" ;;
   keycloak)   shift; cmd_keycloak "$@" ;;
   portada)    cmd_portada ;;
+  app-nueva)  shift; cmd_app_nueva "$@" ;;
+  app-desplegar) shift; cmd_app_desplegar "$@" ;;
+  apps)       cmd_apps ;;
+  dominio)    shift; cmd_dominio "$@" ;;
+  npm-acceso) cmd_npm_acceso ;;
   ci)         cmd_ci ;;
   *)          uso; exit 1 ;;
 esac

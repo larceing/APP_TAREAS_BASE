@@ -76,3 +76,43 @@ async def revisar(request: Request, usuario: str = Depends(auth.requiere_login))
     except (despliegues.DespliegueError, ValueError) as e:
         flash(request, "error", str(e) or "Datos no válidos.")
     return _volver()
+
+
+# ── otras apps ───────────────────────────────────────────────────────────────
+
+_ESPERA = " Tarda unos minutos: el resultado sale abajo, en Otras aplicaciones → Últimas peticiones."
+
+
+@router.post("/apps/nueva/")
+async def app_nueva(request: Request, usuario: str = Depends(auth.requiere_login)):
+    form = await request.form()
+    try:
+        ruta = despliegues.app_nueva(dict(form))
+        flash(request, "success", f"Pedido: crear /{ruta}/ en DEV y PRO, con su login y sus grupos." + _ESPERA)
+    except despliegues.DespliegueError as e:
+        flash(request, "error", str(e))
+    return _volver()
+
+
+@router.post("/apps/desplegar/")
+async def app_desplegar(request: Request, usuario: str = Depends(auth.requiere_login)):
+    form = await request.form()
+    ruta, entorno, version = form.get("ruta", ""), form.get("entorno", ""), (form.get("version") or "").strip()
+    try:
+        despliegues.app_desplegar(ruta, entorno, version)
+        que = "la versión anterior" if version == "anterior" else version
+        flash(request, "success", f"Pedido: {que} de /{ruta}/ en {_NOMBRE.get(entorno, entorno)}." + _ESPERA)
+    except despliegues.DespliegueError as e:
+        flash(request, "error", str(e))
+    return _volver()
+
+
+@router.post("/apps/dominio/")
+async def app_dominio(request: Request, usuario: str = Depends(auth.requiere_login)):
+    form = await request.form()
+    try:
+        dominio = despliegues.app_dominio(form.get("ruta", ""), form.get("dominio", ""))
+        flash(request, "success", f"Pedido: {dominio} para {form.get('ruta')} en PRO, con certificado y login." + _ESPERA)
+    except despliegues.DespliegueError as e:
+        flash(request, "error", str(e))
+    return _volver()

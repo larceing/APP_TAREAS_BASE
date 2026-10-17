@@ -150,10 +150,11 @@ if config.modulo_activo("despliegues"):
     app.include_router(despliegues.router)
 
 
-@app.get("/version/")
+@app.api_route("/version/", methods=["GET", "HEAD"])
 def version():
     """Version de la imagen desplegada (APP_VERSION, la pone el Dockerfile):
-    la consulta el panel Configuracion -> Despliegues. Sin login."""
+    la consulta el panel Configuracion -> Despliegues. Sin login. Tambien
+    con HEAD, que es lo que usan muchos monitores (UptimeRobot)."""
     return JSONResponse({"version": config.app_version()})
 
 
