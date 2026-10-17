@@ -157,11 +157,13 @@ def sso_url_login(state: str) -> str:
 
 
 def sso_completar(code: str):
-    """(None, False) si Keycloak no acepta el code; (username, es_it) si si.
-    Igual que verificar_credenciales, da de alta la fila de auth_user."""
+    """(None, False, "") si Keycloak no acepta el code; (username, es_it,
+    id_token) si si. El id_token se guarda en la sesion para cerrar la de
+    Keycloak sin pantalla de confirmar. Igual que verificar_credenciales, da
+    de alta la fila de auth_user."""
     issuer = os.getenv("KEYCLOAK_ISSUER")
     if not issuer or not code:
-        return None, False
+        return None, False, ""
     try:
         token_resp = requests.post(
             f"{issuer}/protocol/openid-connect/token",
@@ -173,26 +175,30 @@ def sso_completar(code: str):
             },
             timeout=5,
         )
-        access_token = token_resp.json()["access_token"] if token_resp.status_code == 200 else None
-    except (requests.RequestException, ValueError, KeyError):
-        return None, False
+        datos = token_resp.json() if token_resp.status_code == 200 else {}
+        access_token = datos["access_token"] if datos else None
+        id_token = datos.get("id_token") or ""
+    except (requests.RequestException, ValueError, KeyError, AttributeError):
+        return None, False, ""
     if not access_token:
-        return None, False
+        return None, False, ""
     usuario, es_it = _usuario_de_keycloak(issuer, access_token)
     if usuario:
         _asegurar_auth_user(usuario)
-    return usuario, es_it
+    return usuario, es_it, (id_token if isinstance(id_token, str) else "")
 
 
-def sso_url_logout() -> str:
+def sso_url_logout(id_token: str = "") -> str:
     """Cierra tambien la sesion de Keycloak (si no, la siguiente visita entraria
-    sola) y vuelve a SSO_URL_SALIDA (la portada) o a la propia app."""
+    sola) y vuelve a SSO_URL_SALIDA (la portada) o a la propia app. Con el
+    id_token del login (id_token_hint) Keycloak cierra sin preguntar."""
     from urllib.parse import urlencode
     issuer = os.getenv("KEYCLOAK_ISSUER", "")
     salida = os.getenv("SSO_URL_SALIDA", "").strip() or os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/") + "/"
-    return f"{issuer}/protocol/openid-connect/logout?" + urlencode({
-        "client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "post_logout_redirect_uri": salida,
-    })
+    params = {"client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "post_logout_redirect_uri": salida}
+    if id_token:
+        params["id_token_hint"] = id_token
+    return f"{issuer}/protocol/openid-connect/logout?" + urlencode(params)
 
 
 def _asegurar_auth_user(username: str) -> None:

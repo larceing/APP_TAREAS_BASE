@@ -152,6 +152,7 @@ YAML
     escribir_entrada_conf "$ent"
     cat > "$DIR/entrada/$ent/apps/tareas.conf" <<NGINX
 # app: Gestor de Tareas
+# salud: version/
 location = /tareas { return 308 /tareas/; }
 location /tareas/ {
   set \$destino http://tareas-$ent:8000;
@@ -226,15 +227,19 @@ CSS
 }
 
 # portada del entorno: una tarjeta por app (la linea "# app: nombre" de su
-# .conf) con su estado y version, leidos de <ruta>version/
+# .conf) con su estado, que se mira en <ruta><salud> ("# salud: ..." en el
+# .conf; por defecto version/, y si responde JSON con "version" se enseña)
 escribir_portada() {
-  local ent=$1 f ruta nombre lista="" titulo sub
+  local ent=$1 f ruta nombre salud lista="" titulo sub
   for f in "$DIR/entrada/$ent/apps"/*.conf; do
     [[ -f "$f" ]] || continue
     ruta="/$(basename "$f" .conf)/"
     nombre=$(sed -n 's/^# app: //p' "$f" | head -n1)
     nombre=${nombre:-$ruta}
-    lista+="<a class=\"app\" href=\"$ruta\" data-ruta=\"$ruta\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
+    salud=$(sed -n 's/^# salud: *//p' "$f" | head -n1)
+    salud=${salud:-version/}
+    [[ "$salud" =~ ^[A-Za-z0-9._/-]*$ ]] || salud=version/
+    lista+="<a class=\"app\" href=\"$ruta\" data-salud=\"$ruta${salud#/}\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
   done
   [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
   case $ent in
@@ -254,11 +259,14 @@ escribir_portada() {
 </main>
 <footer>Entorno ${ent^^}</footer>
 <script>
-document.querySelectorAll(".app[data-ruta]").forEach(function (a) {
+document.querySelectorAll(".app[data-salud]").forEach(function (a) {
   var txt = a.querySelector(".txt");
-  fetch(a.dataset.ruta + "version/", { cache: "no-store" })
-    .then(function (r) { if (!r.ok) throw r; return r.json(); })
-    .then(function (d) { a.classList.add("on"); txt.textContent = "En marcha" + (d.version ? " · " + d.version : ""); })
+  fetch(a.dataset.salud, { cache: "no-store", headers: { Accept: "application/json" } })
+    .then(function (r) {
+      if (!r.ok) throw r;
+      a.classList.add("on"); txt.textContent = "En marcha";
+      return r.json().then(function (d) { if (d && d.version) txt.textContent = "En marcha · " + d.version; }, function () {});
+    })
     .catch(function () { txt.textContent = "Sin desplegar o arrancando"; });
 });
 </script>
