@@ -15,6 +15,7 @@
 #   tareas.sh keycloak ENT URL ISSUER [CLIENTE]
 #                                      login unico con Keycloak en ENT (pide
 #                                      el client secret y vuelve a arrancar)
+#   tareas.sh portada                  rehace la portada de cada entorno
 #
 # ENT = dev | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
 #   <ENT>/.env                secretos y version actual (lo crea "preparar")
@@ -148,16 +149,7 @@ YAML
       proxy:
         aliases: [entrada-$ent]
 YAML
-    cat > "$DIR/entrada/$ent/default.conf" <<'NGINX'
-# Entrada del entorno: portada en / y una app por ruta (apps/*.conf)
-server {
-  listen 80;
-  client_max_body_size 50m;
-  resolver 127.0.0.11 valid=10s ipv6=off;
-  location = / { root /etc/nginx/conf.d/html; try_files /index.html =404; }
-  include /etc/nginx/conf.d/apps/*.conf;
-}
-NGINX
+    escribir_entrada_conf "$ent"
     cat > "$DIR/entrada/$ent/apps/tareas.conf" <<NGINX
 # app: Gestor de Tareas
 location = /tareas { return 308 /tareas/; }
@@ -186,22 +178,119 @@ YAML
   umask 077
 }
 
-# portada del entorno: un enlace por app (la linea "# app: nombre" de su .conf)
+# nginx de la entrada: portada en /, una app por ruta (apps/*.conf) y una
+# pagina clara cuando la app no responde (aun sin desplegar, arrancando...)
+escribir_entrada_conf() {
+  cat > "$DIR/entrada/$1/default.conf" <<'NGINX'
+# Entrada del entorno: portada en / y una app por ruta (apps/*.conf)
+server {
+  listen 80;
+  client_max_body_size 50m;
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  error_page 502 503 504 /no-disponible.html;
+  location = / { root /etc/nginx/conf.d/html; try_files /index.html =404; }
+  location = /no-disponible.html { root /etc/nginx/conf.d/html; internal; }
+  include /etc/nginx/conf.d/apps/*.conf;
+}
+NGINX
+}
+
+# Estilos comunes de la portada y de la pagina de "no disponible"
+estilos_entrada() {
+  cat <<'CSS'
+:root{--fondo:#f4f6fb;--tarjeta:#fff;--texto:#111827;--suave:#6b7280;--borde:#e5e7eb;--acento:#2563eb;--ok:#16a34a;--mal:#9ca3af;--sombra:0 1px 2px rgba(16,24,40,.05),0 8px 24px rgba(16,24,40,.06)}
+@media (prefers-color-scheme:dark){:root{--fondo:#0b1020;--tarjeta:#141a2e;--texto:#e5e7eb;--suave:#9ca3af;--borde:#232b45;--acento:#60a5fa;--ok:#4ade80;--mal:#6b7280;--sombra:none}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fondo);color:var(--texto);display:flex;flex-direction:column}
+main{width:100%;max-width:880px;margin:0 auto;padding:56px 20px 32px;flex:1}
+.cab{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:26px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--suave);margin:8px 0 32px}
+.chip{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:var(--chip-fondo);color:var(--chip-texto)}
+.dev{--chip-fondo:#fef3c7;--chip-texto:#92400e}
+.pro{--chip-fondo:#dcfce7;--chip-texto:#166534}
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.app{display:flex;gap:14px;align-items:center;padding:18px;background:var(--tarjeta);border:1px solid var(--borde);border-radius:14px;box-shadow:var(--sombra);text-decoration:none;color:inherit;transition:transform .12s,border-color .12s}
+.app:hover{transform:translateY(-2px);border-color:var(--acento)}
+.ico{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:700;font-size:18px;color:#fff;background:linear-gradient(135deg,#2563eb,#7c3aed)}
+.nom{font-weight:600}
+.est{font-size:13px;color:var(--suave);margin-top:4px;display:flex;align-items:center;gap:6px}
+.punto{width:8px;height:8px;border-radius:50%;background:var(--mal)}
+.on .punto{background:var(--ok)}
+.vacio{color:var(--suave)}
+footer{text-align:center;color:var(--suave);font-size:13px;padding:24px}
+.boton{display:inline-block;margin-top:24px;padding:10px 18px;border-radius:10px;background:var(--acento);color:#fff;text-decoration:none;font-weight:600}
+.aviso{max-width:520px;margin:12vh auto 0;text-align:center}
+.aviso .ico{margin:0 auto 20px;width:56px;height:56px;font-size:26px}
+CSS
+}
+
+# portada del entorno: una tarjeta por app (la linea "# app: nombre" de su
+# .conf) con su estado y version, leidos de <ruta>version/
 escribir_portada() {
-  local ent=$1 f ruta nombre lista=""
+  local ent=$1 f ruta nombre lista="" titulo sub
   for f in "$DIR/entrada/$ent/apps"/*.conf; do
     [[ -f "$f" ]] || continue
     ruta="/$(basename "$f" .conf)/"
     nombre=$(sed -n 's/^# app: //p' "$f" | head -n1)
-    lista+="<li><a href=\"$ruta\">${nombre:-$ruta}</a></li>"
+    nombre=${nombre:-$ruta}
+    lista+="<a class=\"app\" href=\"$ruta\" data-ruta=\"$ruta\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
   done
+  [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
+  case $ent in
+    pro) titulo=Producción; sub="Las aplicaciones en uso. Entra con tu usuario de siempre." ;;
+    dev) titulo=Pruebas; sub="Versiones en pruebas: los datos de aquí no son los reales." ;;
+    *)   titulo=${ent^^}; sub="Aplicaciones de este entorno." ;;
+  esac
+  local css; css=$(estilos_entrada)
   cat > "$DIR/entrada/$ent/html/index.html" <<HTML
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Entorno ${ent^^}</title>
-<style>body{font-family:system-ui,sans-serif;max-width:560px;margin:60px auto;padding:0 16px;color:#1f2937}
-h1{font-size:20px}li{margin:8px 0}a{color:#2563eb}</style>
-<h1>Entorno ${ent^^}</h1><ul>$lista</ul>
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>$titulo · ${ent^^}</title>
+<style>$css</style>
+<main>
+  <div class="cab"><h1>$titulo</h1><span class="chip $ent">${ent^^}</span></div>
+  <p class="sub">$sub</p>
+  <div class="apps">$lista</div>
+</main>
+<footer>Entorno ${ent^^}</footer>
+<script>
+document.querySelectorAll(".app[data-ruta]").forEach(function (a) {
+  var txt = a.querySelector(".txt");
+  fetch(a.dataset.ruta + "version/", { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw r; return r.json(); })
+    .then(function (d) { a.classList.add("on"); txt.textContent = "En marcha" + (d.version ? " · " + d.version : ""); })
+    .catch(function () { txt.textContent = "Sin desplegar o arrancando"; });
+});
+</script>
+</html>
 HTML
+  cat > "$DIR/entrada/$ent/html/no-disponible.html" <<HTML
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>No disponible · ${ent^^}</title>
+<style>$css</style>
+<main><div class="aviso">
+  <div class="ico">!</div>
+  <div class="cab" style="justify-content:center"><h1>Esta aplicación no está disponible</h1></div>
+  <p class="sub">Puede que se esté actualizando o que aún no tenga ninguna versión en el entorno <span class="chip $ent">${ent^^}</span>. Prueba otra vez en unos segundos.</p>
+  <a class="boton" href="javascript:location.reload()">Reintentar</a>
+  <p><a href="/" style="color:var(--acento)">Volver al inicio</a></p>
+</div></main>
+</html>
+HTML
+}
+
+# rehace la portada y la pagina de error de cada entorno (tras cambiar apps/)
+cmd_portada() {
+  local ent
+  umask 022
+  for ent in $ENTORNOS; do
+    [[ -d "$DIR/entrada/$ent" ]] || die "falta $DIR/entrada/$ent: ejecuta antes tareas.sh preparar"
+    escribir_entrada_conf "$ent"
+    escribir_portada "$ent"
+    docker exec "entrada-$ent" nginx -s reload >/dev/null 2>&1 || true
+    log "$ent: portada actualizada"
+  done
+  umask 077
 }
 
 # ── preparar ─────────────────────────────────────────────────────────────────
@@ -592,6 +681,7 @@ case "${1:-}" in
   pro-a-dev)  shift; cmd_pro_a_dev "$@" ;;
   logs)       shift; cmd_logs "$@" ;;
   keycloak)   shift; cmd_keycloak "$@" ;;
+  portada)    cmd_portada ;;
   ci)         cmd_ci ;;
   *)          uso; exit 1 ;;
 esac

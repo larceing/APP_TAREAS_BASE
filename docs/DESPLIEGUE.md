@@ -210,6 +210,7 @@ del medio para funciones nuevas y el primero para cambios que obligan a algo
 ./tareas.sh estado                  # versión y salud de cada entorno
 ./tareas.sh historial pro           # qué se desplegó y cuándo
 ./tareas.sh logs pro                # log de la app
+./tareas.sh portada                 # rehace la portada de DEV y PRO
 ./tareas.sh copia pro               # copia de la BD ahora
 ./tareas.sh restaurar pro FICHERO   # volver la BD a una copia (hace otra antes)
 ./tareas.sh pro-a-dev               # copia los datos de PRO en DEV para probar con datos reales
@@ -272,8 +273,10 @@ que pone la entrada; ver `app_fastapi/ruta_base.py`.)
 Cada entorno lee `entrada/<entorno>/apps/<app>.conf` (en la carpeta de
 `tareas.sh`). Para otra app: su contenedor en la red del proxy y un fichero
 como el de `tareas.conf` con su ruta, nombre de contenedor y puerto; luego
-`docker exec entrada-dev nginx -s reload`. La línea `# app: Nombre` del fichero
-es lo que sale en la portada del entorno. La app tiene que saber vivir bajo una
+`./tareas.sh portada`. La línea `# app: Nombre` del fichero es la tarjeta que
+sale en la portada del entorno; la portada pide `<ruta>version/` para mostrar si
+la app está en marcha y su versión. Si la app no responde (aún sin desplegar,
+arrancando), la entrada enseña una página de "no disponible" en vez de un 502. La app tiene que saber vivir bajo una
 ruta (enlaces relativos, o leer `X-Forwarded-Prefix`).
 
 ## Pasar una versión al cliente
