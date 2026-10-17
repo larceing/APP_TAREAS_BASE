@@ -2558,6 +2558,53 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         self.assertIn('href="https://pro.test/linai/"', html)
 
 
+class TableroSoloLecturaTests(EntornoAisladoTestCase):
+    """Un lector del espacio ve el tablero sin botones que luego no hacen nada."""
+
+    def setUp(self):
+        self.espacio = f"{TEST_PREFIX}{uuid.uuid4().hex[:6]}"
+        self.proyecto = f"{TEST_PREFIX.lower()}{uuid.uuid4().hex[:6]}"
+        self.usuario = f"{TEST_PREFIX}{uuid.uuid4().hex[:8]}"
+        conn = db.connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO auth_user (password, is_superuser, username, first_name, last_name, email, "
+                            "is_staff, is_active, date_joined) VALUES ('!', 0, %s, '', '', '', 0, 1, NOW())", (self.usuario,))
+                cur.execute("INSERT INTO espacios (id, nombre) VALUES (%s, %s)", (self.espacio, self.espacio))
+                cur.execute("INSERT INTO espacio_usuarios (espacio_id, user_id, rol) SELECT %s, id, 'lector' FROM auth_user WHERE username=%s",
+                            (self.espacio, self.usuario))
+            conn.commit()
+        finally:
+            conn.close()
+        db.crear_proyecto(self.proyecto, "Prueba lectura", "", "", "#2563eb", "Activo", "kanban", "", "", espacio_id=self.espacio)
+        app.dependency_overrides[auth.requiere_login] = lambda: self.usuario
+        self.client = TestClient(app, follow_redirects=False)
+
+    def tearDown(self):
+        app.dependency_overrides.pop(auth.requiere_login, None)
+        conn = db.connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM columnas_tablero WHERE proyecto_id=%s", (self.proyecto,))
+                cur.execute("DELETE FROM proyectos WHERE id=%s", (self.proyecto,))
+                cur.execute("DELETE FROM espacio_usuarios WHERE espacio_id=%s", (self.espacio,))
+                cur.execute("DELETE FROM espacios WHERE id=%s", (self.espacio,))
+                cur.execute("DELETE FROM auth_user WHERE username=%s", (self.usuario,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_lector_ve_aviso_y_no_botones(self):
+        self.assertFalse(db.puede_escribir_en_proyecto(self.proyecto, db.get_user_id(self.usuario)))
+        html = self.client.get(f"/proyecto/{self.proyecto}/tablero/").text
+        self.assertIn("Solo lectura: puedes ver este tablero", html)
+        self.assertIn("var SOLO_LECTURA = true;", html)
+        db.cambiar_rol_miembro_espacio(self.espacio, db.get_user_id(self.usuario), "editor")
+        html = self.client.get(f"/proyecto/{self.proyecto}/tablero/").text
+        self.assertNotIn("Solo lectura: puedes ver este tablero", html)
+        self.assertIn("var SOLO_LECTURA = false;", html)
+
+
 class ServidorAccesoTests(unittest.TestCase):
     """Ajustes del servidor: solo IT global (no el Admin de una sola app)."""
 
@@ -2583,7 +2630,7 @@ class ServidorAccesoTests(unittest.TestCase):
     def test_la_portada_pregunta_sin_login_y_la_pagina_no_abre(self):
         client = TestClient(app, follow_redirects=False)
         r = client.get("/servidor/acceso/")
-        self.assertEqual((r.status_code, r.json()), (200, {"admin": False}))
+        self.assertEqual((r.status_code, r.json()), (200, {"usuario": None, "admin": False}))
         self.assertIn(client.get("/servidor/").status_code, (302, 303, 307))
         app.dependency_overrides[auth.requiere_login] = lambda: "test-user"
         try:
