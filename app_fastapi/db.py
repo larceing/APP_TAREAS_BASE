@@ -1291,6 +1291,17 @@ def puede_actuar_en_proyecto(proyecto_id: str, user_id: int, permiso: str, asign
     return get_permisos_espacio(proyecto["espacio_id"]).get(permiso, True)
 
 
+def puede_escribir_en_proyecto(proyecto_id: str, user_id: int) -> bool:
+    """Si puede cambiar algo en el proyecto (para pintar el tablero con o
+    sin botones): sin espacio, admin o editor del espacio, o IT. Lector o no
+    miembro -> False. Cada accion se sigue comprobando con
+    puede_actuar_en_proyecto."""
+    proyecto = get_proyecto(proyecto_id)
+    if not proyecto or not proyecto["espacio_id"]:
+        return True
+    return rol_en_espacio(proyecto["espacio_id"], user_id) in ("admin", "editor") or es_it_usuario(user_id)
+
+
 def get_columna_proyecto_id(col_id: str):
     """proyecto_id de una columna del tablero, o None -- para poder
     comprobar permisos ANTES de renombrar/mover/eliminar una columna (las

@@ -220,6 +220,15 @@
   .shortcut-row span { font-size: 13px; color: var(--ink); }
   kbd { display: inline-block; padding: 2px 7px; border-radius: 5px; border: 1.5px solid var(--border); background: var(--bg); color: var(--muted); font-family: 'Segoe UI', system-ui, monospace; font-size: 11px; font-weight: 600; box-shadow: 0 1px 0 var(--border); white-space: nowrap; }
 </style>
+{% if solo_lectura %}
+<style>
+  /* Solo lectura (lector o no miembro del espacio): sin botones que luego no hacen nada */
+  .column-quick-add, .board-add-col, .col-mgmt-wrap, .card-top, .card-select-wrap, #quickAddTaskBtn,
+  #boardToolbar .toolbar-top > .btn-primary, #detailActions { display: none !important; }
+  .solo-lectura-aviso { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 13px; }
+</style>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -336,6 +345,7 @@
   </div>
 </div>
 
+{% if solo_lectura %}<div class="solo-lectura-aviso">{{ icon("book-open", 14) }} Solo lectura: puedes ver este tablero, pero no cambiarlo. Para crear o mover tareas, pide a un admin del espacio que te haga editor.</div>{% endif %}
 <div class="board" id="board">
   {% for col in board_data %}
   <div class="board-column">
@@ -762,7 +772,9 @@ function fetchColumnas(proyectoId, selectAfter) {
   });
 }
 
+var SOLO_LECTURA = {{ (solo_lectura or false)|tojson }};
 function openTaskModal(card) {
+  if (SOLO_LECTURA) return;
   var modal = document.getElementById('taskModal');
   var form = document.getElementById('taskModalForm');
   var isEdit = !!card;
@@ -856,6 +868,7 @@ function _redo() {
 // ── SortableJS ───────────────────────────────────────────────────────────────
 document.querySelectorAll('.column-cards').forEach(function(el) {
   new Sortable(el, {
+    disabled: SOLO_LECTURA,
     group: 'tasks', animation: 150, ghostClass: 'task-ghost', chosenClass: 'task-chosen',
     draggable: '.card', filter: '.card-btn, .card-actions, .quick-add-input, .quick-add-btn', preventOnFilter: true,
     onStart: function(evt) {

@@ -847,6 +847,7 @@ def ver_tablero(project_id: str, request: Request, usuario: str = Depends(auth.r
         "sprint": sprint, "proj_sprints": proj_sprints,
         "mantis_base_url": os.getenv("MANTIS_BASE_URL", "").strip().rstrip("/"),
         "puede_editar": puede_editar,
+        "solo_lectura": not db.puede_escribir_en_proyecto(project_id, db.get_user_id(usuario)),
         "miembros_asignables": db.load_miembros_espacio(proyecto["espacio_id"]) if proyecto["espacio_id"] else db.load_usuarios(),
     })
 
