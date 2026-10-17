@@ -150,9 +150,11 @@ Conexión con GitHub*:
 - **Repositorio**: `usuario/nombre`.
 - **Token**: en GitHub, tu foto → *Settings → Developer settings → Personal access
   tokens → Fine-grained tokens → Generate new token*. *Repository access*: solo
-  este repositorio. *Permissions → Repository*: **Actions**, **Contents**,
-  **Deployments** y **Administration** en *Read and write* (Administration solo
-  hace falta para el botón de crear entornos; se puede quitar después).
+  este repositorio. *Permissions → Repository*: **Actions**, **Contents** y
+  **Deployments** en *Read and write*. Solo si quieres que el panel cree los
+  entornos (*Crear los entornos en GitHub*) hace falta además
+  **Administration**, y conviene quitársela justo después: deja cambiar los
+  ajustes del repositorio y el token vive en la app.
   Se pega en el panel y se guarda cifrado; no se vuelve a enseñar.
 - **Direcciones** de DEV y PRO: `https://dev.tudominio.com/tareas` y
   `https://pro.tudominio.com/tareas` (o su dominio propio, si ya lo tiene).
