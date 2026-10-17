@@ -349,6 +349,16 @@ class HomeRouteTests(EntornoAisladoTestCase):
         self.assertEqual(r.status_code, 307)
         self.assertTrue(r.headers["location"].startswith("/login/"))
 
+    def test_peticion_de_fondo_sin_sesion_da_401(self):
+        # la campana no debe apuntarse como destino del login
+        app.dependency_overrides.pop(auth.requiere_login, None)
+        r = self.client.get("/notificaciones/resumen", headers={"Accept": "application/json"}, follow_redirects=False)
+        self.assertEqual(r.status_code, 401)
+        r = self.client.get("/", headers={"Sec-Fetch-Mode": "cors"}, follow_redirects=False)
+        self.assertEqual(r.status_code, 401)
+        r = self.client.get("/", headers={"Sec-Fetch-Mode": "navigate", "Accept": "text/html"}, follow_redirects=False)
+        self.assertEqual(r.status_code, 307)
+
 
 # ── espacios (workspaces) -- fase 1 del multiusuario, ver CLAUDE.md ─────────
 
@@ -2466,7 +2476,7 @@ class SsoTests(EntornoAisladoTestCase):
     def test_vuelta_correcta_inicia_sesion(self, mock_post, mock_get):
         from urllib.parse import parse_qs, urlparse
         usuario = TEST_PREFIX + "sso"
-        mock_post.return_value = Mock(status_code=200, json=lambda: {"access_token": "tok"})
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"access_token": "tok", "id_token": "idtok"})
         mock_get.return_value = Mock(status_code=200, json=lambda: {"preferred_username": usuario, "groups": ["IT"]})
         client = TestClient(app)
         try:
@@ -2478,6 +2488,8 @@ class SsoTests(EntornoAisladoTestCase):
             self.assertIsNotNone(db.get_user_id(usuario))
             salida = client.get("/logout/", follow_redirects=False).headers["location"]
             self.assertTrue(salida.startswith("http://keycloak.test/realms/demo/protocol/openid-connect/logout?"))
+            # con id_token_hint Keycloak cierra sin pantalla de confirmar
+            self.assertEqual(parse_qs(urlparse(salida).query)["id_token_hint"], ["idtok"])
         finally:
             conn = db.connect()
             with conn.cursor() as cur:

@@ -77,6 +77,13 @@ app.add_middleware(
 
 @app.exception_handler(auth.NoAutenticado)
 def _sin_sesion(request: Request, exc: auth.NoAutenticado):
+    # Una peticion de fondo (la campana, un fetch) sin sesion recibe 401: si
+    # se la mandara a /login/ apuntaria su propia URL como destino y pisaria
+    # el inicio de sesion que la persona tenga a medias.
+    modo = request.headers.get("sec-fetch-mode", "")
+    acepta = request.headers.get("accept", "")
+    if (modo and modo != "navigate") or ("application/json" in acepta and "text/html" not in acepta):
+        return JSONResponse({"error": "sin sesion"}, status_code=401)
     return RedirectResponse(url=f"/login/?next={request.url.path}")
 
 

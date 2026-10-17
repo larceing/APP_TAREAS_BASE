@@ -274,8 +274,9 @@ Cada entorno lee `entrada/<entorno>/apps/<app>.conf` (en la carpeta de
 `tareas.sh`). Para otra app: su contenedor en la red del proxy y un fichero
 como el de `tareas.conf` con su ruta, nombre de contenedor y puerto; luego
 `./tareas.sh portada`. La línea `# app: Nombre` del fichero es la tarjeta que
-sale en la portada del entorno; la portada pide `<ruta>version/` para mostrar si
-la app está en marcha y su versión. Si la app no responde (aún sin desplegar,
+sale en la portada del entorno; con `# salud: <camino>` (por defecto `version/`) la portada
+pide `<ruta><camino>` para mostrar si la app está en marcha, y su versión si
+responde JSON con `"version"`. Si la app no responde (aún sin desplegar,
 arrancando), la entrada enseña una página de "no disponible" en vez de un 502. La app tiene que saber vivir bajo una
 ruta (enlaces relativos, o leer `X-Forwarded-Prefix`).
 
