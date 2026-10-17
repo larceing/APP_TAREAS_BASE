@@ -147,7 +147,7 @@ if config.modulo_activo("despliegues"):
 def version():
     """Version de la imagen desplegada (APP_VERSION, la pone el Dockerfile):
     la consulta el panel Configuracion -> Despliegues. Sin login."""
-    return JSONResponse({"version": os.getenv("APP_VERSION", "local")})
+    return JSONResponse({"version": config.app_version()})
 
 
 

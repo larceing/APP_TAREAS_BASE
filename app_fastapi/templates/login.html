@@ -31,6 +31,7 @@ body {
 .login-error { background: #fee2e2; color: #dc2626; padding: 10px 16px; font-size: 13px; font-weight: 600; }
 .btn-primary { background: #2563eb; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 700; font-size: 14px; cursor: pointer; }
 .btn-full { width: 100%; }
+.login-version { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -43,7 +44,21 @@ body {
       <p>Accede con tu usuario de siempre</p>
     </div>
 
-    {% if error %}
+    {% if sso_fallo and sin_acceso %}
+    <div class="login-error">Tu usuario no tiene acceso a esta aplicación. Pídeselo a su administrador.</div>
+    <form method="get" action="/logout/">
+      <button type="submit" class="btn-primary btn-full">Entrar con otro usuario</button>
+    </form>
+    {% elif sso_fallo %}
+    <div class="login-error">No se pudo completar el inicio de sesión.</div>
+    <form method="get" action="/login/">
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit" class="btn-primary btn-full">Volver a intentarlo</button>
+    </form>
+    {% else %}
+    {% if sin_acceso %}
+    <div class="login-error">Tu usuario no tiene acceso a esta aplicación. Pídeselo a su administrador.</div>
+    {% elif error %}
     <div class="login-error">Usuario o contraseña incorrectos.</div>
     {% endif %}
 
@@ -59,7 +74,9 @@ body {
       <input type="hidden" name="next" value="{{ next }}">
       <button type="submit" class="btn-primary btn-full">Entrar</button>
     </form>
+    {% endif %}
   </div>
+  <div class="login-version">Versión {{ app_version() }}</div>
 </div>
 
 </body>

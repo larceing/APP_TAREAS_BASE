@@ -41,7 +41,7 @@ There is no configured linter/formatter — don't invent one.
 
 ### Installation-level config: `config.py`
 
-`config.py` reads `.env` on every call (never cached): `app_nombre()/app_empresa()/app_logo()` (branding, exposed as Jinja globals), `auth_modo()` (`local`|`keycloak`) and `modulo_activo(name)` for the optional modules `mantis`, `nexus`, `escritorio`, `conectores`, `despliegues` — all **off by default**. A disabled module: its router is not mounted (`main.py`), its menu entries and Configuración tabs are hidden (`modulo_activo()` in templates, `_MODULO_DE_TAB` in `routers/configuracion.py`), and its background threads don't start. Any new optional feature should follow this same pattern. Never hardcode a company name, path, server or person anywhere.
+`config.py` reads `.env` on every call (never cached): `app_nombre()/app_empresa()/app_logo()` (branding, exposed as Jinja globals), `auth_modo()` (`local`|`keycloak`|`sso`), `app_version()` and `modulo_activo(name)` for the optional modules `mantis`, `nexus`, `escritorio`, `conectores`, `despliegues` — all **off by default**. A disabled module: its router is not mounted (`main.py`), its menu entries and Configuración tabs are hidden (`modulo_activo()` in templates, `_MODULO_DE_TAB` in `routers/configuracion.py`), and its background threads don't start. Any new optional feature should follow this same pattern. Never hardcode a company name, path, server or person anywhere.
 
 ### The real/test entorno toggle
 
@@ -53,7 +53,7 @@ There is no configured linter/formatter — don't invent one.
 
 ### Auth
 
-`auth.py`: `AUTH_MODO=local` checks `auth_user` with Django-compatible `pbkdf2_sha256` hashes (plain `hashlib`; `hash_contrasena()` creates them, `scripts/usuarios.py` manages users); IT = `is_staff`. `AUTH_MODO=keycloak` uses the Direct Access Grant against `KEYCLOAK_ISSUER`; IT = Keycloak group `IT`; first login auto-creates the `auth_user` row. `auth_user` has **no column defaults** on purpose (same as Django's) — every INSERT must give all columns. Session = signed cookie (`SessionMiddleware`, 90 days). `requiere_login` / `requiere_it` dependencies.
+`auth.py`: `AUTH_MODO=local` checks `auth_user` with Django-compatible `pbkdf2_sha256` hashes (plain `hashlib`; `hash_contrasena()` creates them, `scripts/usuarios.py` manages users); IT = `is_staff`. `AUTH_MODO=keycloak` uses the Direct Access Grant against `KEYCLOAK_ISSUER`; IT = Keycloak group `IT`; first login auto-creates the `auth_user` row. `AUTH_MODO=sso` is the Authorization Code flow (`/login/` redirects to Keycloak, back to `/login/sso/`, `APP_URL_PUBLICA` builds the redirect URI) so one Keycloak login covers every app of the realm. With `KEYCLOAK_GRUPO_APP=Tareas` only `/Tareas` and its subgroups get in and `/Tareas/Admin` is IT for this app; `KEYCLOAK_GRUPO_ADMIN_GLOBAL` (default `IT`) enters and administers every app (`auth.acceso_por_grupos`). `auth_user` has **no column defaults** on purpose (same as Django's) — every INSERT must give all columns. Session = signed cookie (`SessionMiddleware`, 90 days). `requiere_login` / `requiere_it` dependencies.
 
 ### CSRF
 

@@ -219,6 +219,45 @@ del medio para funciones nuevas y el primero para cambios que obligan a algo
 `<entorno>/app.env` y vuelve a desplegar su versión actual
 (`./tareas.sh desplegar pro $(grep ^VERSION= pro/.env | cut -d= -f2)`).
 
+## Login con Keycloak (todas las apps)
+
+Para que los usuarios y sus permisos se gestionen en Keycloak y una sola
+sesión valga para todas las apps del realm (`AUTH_MODO=sso`):
+
+1. **Grupos** (Groups), uno por app con subgrupos:
+
+   | Grupo | Qué da |
+   |---|---|
+   | `IT` | Entra en todas las apps y las administra |
+   | `/Tareas` | Entra en el Gestor de Tareas |
+   | `/Tareas/Admin` | Administra solo el Gestor de Tareas |
+   | `/Tareas/<Departamento>` | Entra (para separar por departamento) |
+
+   Quien no esté en `/Tareas` (ni en un subgrupo, ni en `IT`) no puede entrar,
+   aunque sea admin de otra app.
+
+2. **Cliente** por entorno (Clients → *Create client*), p. ej. `tareas-dev`:
+   *Client authentication* activado, *Standard flow* activado,
+   *Valid redirect URIs* = `https://dev.<dominio>/tareas/login/sso/`,
+   *Valid post logout redirect URIs* = `https://dev.<dominio>/*`.
+   En *Client scopes* → `tareas-dev-dedicated` → *Add mapper* → *By
+   configuration* → *Group Membership*: *Token Claim Name* `groups`,
+   **Full group path activado**, *Add to userinfo* activado.
+   Copia el secreto de *Credentials*.
+
+3. **En el servidor**, con la versión que trae este cambio ya desplegada:
+
+   ```bash
+   ./tareas.sh keycloak dev https://dev.<dominio>/tareas https://<keycloak>/auth/realms/<realm>
+   ```
+
+   Pide el client secret (no se ve al escribirlo), lo guarda en `dev/app.env`
+   y vuelve a arrancar el entorno. Igual con `pro` y su cliente `tareas-pro`.
+   Otro nombre de grupo: `GRUPO_APP=Otro ./tareas.sh keycloak ...`.
+
+Con `sso`, el usuario `admin` local deja de servir: se entra siempre por
+Keycloak y la primera vez se da de alta sola la persona en la app.
+
 ## Dominio propio de una app
 
 Cuando la app ya se usa de verdad: un registro `A` más (`tareas`) y un *Proxy
