@@ -2282,6 +2282,15 @@ class DespliegueVersionTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("Versión v9.9.9", r.text)
 
+    def test_marca_de_la_instalacion_en_el_login(self):
+        tema = "https://portal.example.com/marca/tareas.css"
+        with patch.dict("os.environ", {"AUTH_MODO": "local", "APP_TEMA_CSS": tema}):
+            r = TestClient(app, follow_redirects=False).get("/login/")
+        self.assertIn(f'<link rel="stylesheet" href="{tema}">', r.text)
+        with patch.dict("os.environ", {"AUTH_MODO": "local", "APP_TEMA_CSS": ""}):
+            r = TestClient(app, follow_redirects=False).get("/login/")
+        self.assertNotIn("marca/tareas.css", r.text)
+
 
 def _respuesta(status=200, datos=None):
     r = Mock(status_code=status, content=b"x" if datos is not None else b"")

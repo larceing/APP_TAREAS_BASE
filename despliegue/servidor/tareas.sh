@@ -22,6 +22,11 @@
 #   tareas.sh apps                     estado de esas apps
 #   tareas.sh dominio APP DOMINIO      la app de PRO pasa a su propio dominio
 #   tareas.sh npm-acceso               una vez: usuario de Nginx Proxy Manager
+#   tareas.sh importar ENT ORIGEN [APP]  trae los datos (y adjuntos) de una
+#                                      instalacion de antes (contenedor o volcado)
+#   tareas.sh publicar URL [ALIAS] [GRUPO]
+#                                      Tareas de PRO toma la direccion de esa
+#                                      instalacion (y para la de antes)
 #
 # ENT = dev | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
 #   <ENT>/.env                secretos y version actual (lo crea "preparar")
@@ -929,6 +934,38 @@ r = urllib.request.Request(sys.argv[1] + "/api/tokens", method="POST", headers={
 print(json.load(urllib.request.urlopen(r, timeout=15))["token"])' "$(npm_url)" || die "Nginx Proxy Manager no acepta el usuario guardado (tareas.sh npm-acceso)"
 }
 
+# añade una direccion (https://host[/ruta]) al cliente de Keycloak de un app.env:
+# vuelta del login, origen web y vuelta del cierre de sesion
+kc_anadir_url() {   # kc_anadir_url APP_ENV URL
+  local envapp=$1 url=${2%/} cliente issuer realm cid
+  cliente=$(var "$envapp" KEYCLOAK_CLIENT_ID)
+  [[ -n "$cliente" ]] || return 0
+  kc_entrar
+  issuer=$(var "$envapp" KEYCLOAK_ISSUER); realm=${issuer##*/}
+  cid=$(kcx get clients -r "$realm" -q clientId="$cliente" --fields id --format csv --noquotes | tr -d '\r')
+  [[ -n "$cid" ]] || die "no encuentro el cliente $cliente en Keycloak"
+  kcx get "clients/$cid" -r "$realm" | python3 -c '
+import json, sys
+from urllib.parse import urlparse
+c = json.load(sys.stdin); u = sys.argv[1]; p = urlparse(u); origen = p.scheme + "://" + p.netloc
+c["redirectUris"] = sorted(set(c.get("redirectUris", [])) | {u + "/*"})
+c["webOrigins"] = sorted(set(c.get("webOrigins", [])) | {origen})
+a = c.setdefault("attributes", {}); v = [x for x in a.get("post.logout.redirect.uris", "").split("##") if x]
+a["post.logout.redirect.uris"] = "##".join(sorted(set(v) | {u + "/*"}))
+print(json.dumps(c))' "$url" | kcx update "clients/$cid" -r "$realm" -f -
+}
+
+# la app pasa a usar URL; la de antes sigue valiendo (el login vuelve por
+# donde se entro, APP_URLS_ALTERNATIVAS)
+cambiar_url_publica() {   # cambiar_url_publica APP_ENV URL
+  local envapp=$1 url=${2%/} antes alt
+  antes=$(var "$envapp" APP_URL_PUBLICA); alt=$(var "$envapp" APP_URLS_ALTERNATIVAS)
+  if [[ -n "$antes" && "$antes" != "$url" && ",$alt," != *",$antes,"* ]]; then
+    poner_var "$envapp" APP_URLS_ALTERNATIVAS "${alt:+$alt,}$antes"
+  fi
+  poner_var "$envapp" APP_URL_PUBLICA "$url"
+}
+
 cmd_dominio() {   # dominio APP DOMINIO   (APP = tareas o la ruta de otra app)
   local app=${1:-} dominio=${2:-} host puerto envapp cliente
   [[ -n "$app" && -n "$dominio" ]] || die "uso: tareas.sh dominio APP DOMINIO   (p. ej. dominio tareas tareas.midominio.com)"
@@ -936,6 +973,8 @@ cmd_dominio() {   # dominio APP DOMINIO   (APP = tareas o la ruta de otra app)
   [[ "$dominio" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$ ]] || die "dominio no válido: '$dominio'"
   if [[ "$app" == tareas ]]; then
     host=tareas-pro; puerto=8000; envapp="$DIR/pro/app.env"
+    [[ -z "$(var "$envapp" APP_RUTA_BASE)" ]] \
+      || die "Tareas de PRO está publicada en $(var "$envapp" APP_URL_PUBLICA) (tareas.sh publicar), que necesita la ruta /tareas: un dominio propio en / la rompería"
   else
     ruta_valida "$app"
     [[ -f "$(app_dir "$app" pro)/.env" ]] || die "no existe la app '$app'"
@@ -968,30 +1007,13 @@ PY
 
   if [[ -n "$cliente" ]]; then
     log "2/3 Keycloak: $dominio en el cliente $cliente"
-    kc_entrar
-    local issuer realm cid
-    issuer=$(var "$envapp" KEYCLOAK_ISSUER); realm=${issuer##*/}
-    cid=$(kcx get clients -r "$realm" -q clientId="$cliente" --fields id --format csv --noquotes | tr -d '\r')
-    [[ -n "$cid" ]] || die "no encuentro el cliente $cliente en Keycloak"
-    kcx get "clients/$cid" -r "$realm" | python3 -c '
-import json, sys
-c = json.load(sys.stdin); d = "https://" + sys.argv[1]
-c["redirectUris"] = sorted(set(c.get("redirectUris", [])) | {d + "/*"})
-c["webOrigins"] = sorted(set(c.get("webOrigins", [])) | {d})
-a = c.setdefault("attributes", {}); v = [x for x in a.get("post.logout.redirect.uris", "").split("##") if x]
-a["post.logout.redirect.uris"] = "##".join(sorted(set(v) | {d + "/*"}))
-print(json.dumps(c))' "$dominio" | kcx update "clients/$cid" -r "$realm" -f -
+    kc_anadir_url "$envapp" "https://$dominio"
   else
     log "2/3 la app no usa Keycloak: nada que cambiar"
   fi
 
   log "3/3 la app pasa a usar https://$dominio"
-  # la direccion de antes sigue valiendo (el login vuelve por donde se entró)
-  local antes alt; antes=$(var "$envapp" APP_URL_PUBLICA); alt=$(var "$envapp" APP_URLS_ALTERNATIVAS)
-  if [[ -n "$antes" && "$antes" != "https://$dominio" && ",$alt," != *",$antes,"* ]]; then
-    poner_var "$envapp" APP_URLS_ALTERNATIVAS "${alt:+$alt,}$antes"
-  fi
-  poner_var "$envapp" APP_URL_PUBLICA "https://$dominio"
+  cambiar_url_publica "$envapp" "https://$dominio"
   local version
   if [[ "$app" == tareas ]]; then
     version=$(var "$DIR/pro/.env" VERSION)
@@ -1002,6 +1024,141 @@ print(json.dumps(c))' "$dominio" | kcx update "clients/$cid" -r "$realm" -f -
   fi
   echo
   echo "LISTO: https://$dominio ya es la dirección de $app en PRO (la de pro.<dominio>/$app sigue funcionando)."
+}
+
+# ── publicar: Tareas de PRO ocupa la direccion de una instalacion de antes ──
+# Para cuando ya habia un Gestor de Tareas suelto (p. ej. el de un portal que
+# manda /tareas a "spsil-tareas:8000"): PRO toma ese nombre en la red del
+# proxy (ALIAS_PUBLICO), se para la instalacion de antes (sin borrarla) y la
+# direccion pasa a ser la de PRO, con su login. Si algo no responde, todo
+# vuelve a como estaba. Los datos se traen antes con "tareas.sh importar".
+cmd_publicar() {   # publicar URL [ALIAS] [GRUPO]
+  local url=${1:-} alias=${2:-} grupo=${3:-} env="$DIR/pro/.env" envapp="$DIR/pro/app.env" version red c ruta
+  [[ -n "$url" ]] || die "uso: tareas.sh publicar URL [ALIAS|-] [GRUPO]   (p. ej. publicar https://portal.midominio.com/tareas spsil-tareas Tareas)"
+  entorno_valido pro
+  url=${url%/}; [[ "$alias" == - ]] && alias=""
+  [[ "$url" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?(/[A-Za-z0-9._-]+)*$ ]] || die "URL no válida: '$url' (https://dominio[/ruta])"
+  # el portal de delante manda la ruta tal cual y sin X-Forwarded-Prefix: la
+  # app la sabe por APP_RUTA_BASE. Tiene que ser /tareas, la misma que usa
+  # la entrada de PRO, para que pro.<dominio>/tareas siga valiendo
+  ruta=$(sed -E 's|^https://[^/]+||' <<< "$url")
+  [[ -z "$ruta" || "$ruta" == /tareas ]] || die "la ruta tiene que ser /tareas o ninguna (https://dominio/tareas o https://dominio), no '$ruta'"
+  [[ -z "$grupo" || "$grupo" =~ ^[A-Za-z0-9][A-Za-z0-9/_-]{0,60}$ ]] || die "grupo no válido: '$grupo' (p. ej. Tareas o PRO/Tareas)"
+  version=$(var "$env" VERSION)
+  [[ -n "$version" ]] || die "PRO aún no tiene ninguna versión"
+  red=$(var "$env" RED_PROXY); red=${red:-proxy_default}
+  local antiguos=(); local -A reinicio=()
+  if [[ -n "$alias" ]]; then
+    [[ "$alias" =~ ^[a-z0-9][a-z0-9_.-]{1,62}$ ]] || die "alias no válido: '$alias'"
+    case "$alias" in tareas-dev|tareas-pro|entrada-*|keycloak) die "el nombre '$alias' ya es de otra cosa";; esac
+    grep -q ALIAS_PUBLICO "$DIR/pro/docker-compose.yml" \
+      || die "la versión $version de PRO aún no sabe tomar otro nombre: saca antes una versión nueva (panel: Sacar una versión nueva) y vuelve a probar"
+    # quien responde hoy a ese nombre en la red del proxy (la instalacion de antes)
+    local mio; mio=$(dc pro ps -q app 2>/dev/null || true)
+    for c in $(docker ps -q --filter "network=$red"); do
+      [[ -n "$mio" && "$mio" == "$c"* ]] && continue
+      if docker inspect -f "{{.Name}} {{with index .NetworkSettings.Networks \"$red\"}}{{join .Aliases \" \"}}{{end}}" "$c" \
+           | tr ' ' '\n' | sed 's|^/||' | grep -qxF "$alias"; then antiguos+=("$c"); fi
+    done
+  fi
+
+  # para volver atras si algo falla
+  cp "$env" "$env.antes-publicar"; cp "$envapp" "$envapp.antes-publicar"
+  deshacer() {
+    echo "No ha ido bien: dejo todo como estaba." >&2
+    cp "$env.antes-publicar" "$env"; cp "$envapp.antes-publicar" "$envapp"
+    ( cmd_desplegar pro "$version" publicar-deshecho ) || true
+    for c in "${antiguos[@]}"; do docker update --restart="${reinicio[$c]:-unless-stopped}" "$c" >/dev/null; docker start "$c" >/dev/null || true; done
+    exit 1
+  }
+
+  log "1/4 Keycloak: $url en el cliente de PRO"
+  kc_anadir_url "$envapp" "$url"
+  cambiar_url_publica "$envapp" "$url"
+  poner_var "$envapp" APP_RUTA_BASE "$ruta"
+  # quien entra (KEYCLOAK_GRUPO_APP): p. ej. el grupo que ya usaba la
+  # instalacion de antes, en vez de /PRO/Tareas
+  if [[ -n "$grupo" ]]; then poner_var "$envapp" KEYCLOAK_GRUPO_APP "$grupo"; fi
+  if [[ -n "$alias" ]]; then poner_var "$env" ALIAS_PUBLICO "$alias"; fi
+
+  if (( ${#antiguos[@]} )); then
+    log "2/4 paro la instalación de antes (no se borra): $(docker inspect -f '{{.Name}}' "${antiguos[@]}" | sed 's|^/||' | tr '\n' ' ')"
+    for c in "${antiguos[@]}"; do
+      reinicio[$c]=$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$c")
+      docker update --restart=no "$c" >/dev/null; docker stop "$c" >/dev/null
+    done
+  else
+    log "2/4 nadie más responde a ${alias:-ese nombre}: nada que parar"
+  fi
+
+  log "3/4 PRO vuelve a arrancar con su nueva dirección"
+  ( cmd_desplegar pro "$version" publicar ) || deshacer
+
+  if [[ -n "$alias" ]]; then
+    log "4/4 compruebo que $alias ya es PRO"
+    local t=0 ok=0
+    while (( t < 60 )); do
+      docker exec entrada-pro wget -q -T 5 -O /dev/null "http://$alias:8000/version/" 2>/dev/null && { ok=1; break; }
+      sleep 5; t=$((t + 5))
+    done
+    (( ok )) || deshacer
+  fi
+  python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1] + "/version/", timeout=10)' "$url" 2>/dev/null \
+    || echo "AVISO: desde el servidor no llego a $url/version/ (puede ser solo la red del servidor): ábrelo en el navegador para comprobarlo." >&2
+  rm -f "$env.antes-publicar" "$envapp.antes-publicar"
+  echo
+  echo "LISTO: $url ya es el Gestor de Tareas de PRO."
+  (( ${#antiguos[@]} )) && echo "La instalación de antes está parada, no borrada. Volver a ella: docker start $(docker inspect -f '{{.Name}}' "${antiguos[@]}" | sed 's|^/||' | tr '\n' ' ')"
+  return 0
+}
+
+# ── importar: los datos de una instalacion de antes pasan a un entorno ──────
+# ORIGEN es su contenedor de MariaDB (se vuelca en el momento; la base que no
+# sea del sistema ni *_test, o la de BD_ORIGEN=...) o un volcado .sql/.sql.gz.
+# Con APP_ORIGEN (el contenedor de esa app) se traen tambien los adjuntos.
+# Antes se guarda copia de lo que hay (copias/<ENT>/).
+cmd_importar() {   # importar ENT ORIGEN [APP_ORIGEN] [--si]
+  local ent=${1:-} origen=${2:-} app_origen=${3:-} si=${4:-} fichero bd
+  [[ "$app_origen" == --si ]] && { si=--si; app_origen=""; }
+  [[ -n "$ent" && -n "$origen" ]] || die "uso: tareas.sh importar ENT CONTENEDOR_BD|VOLCADO.sql[.gz] [CONTENEDOR_APP] [--si]"
+  entorno_valido "$ent"
+  mkdir -p "$DIR/copias/$ent"
+  fichero="$DIR/copias/$ent/$(date +%Y%m%d-%H%M%S)_importado.sql.gz"
+  if [[ -f "$origen" ]]; then
+    case "$origen" in
+      *.sql.gz) cp "$origen" "$fichero" ;;
+      *.sql)    gzip -c "$origen" > "$fichero" ;;
+      *) die "el volcado tiene que ser .sql o .sql.gz" ;;
+    esac
+  else
+    [[ "$origen" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] && docker inspect "$origen" >/dev/null 2>&1 \
+      || die "'$origen' no es ni un fichero ni un contenedor (docker ps)"
+    # la contraseña de root la lee el propio contenedor: no pasa por aqui
+    local en='MYSQL_PWD="${MARIADB_ROOT_PASSWORD:-$MYSQL_ROOT_PASSWORD}"; export MYSQL_PWD; c=mariadb; command -v mariadb >/dev/null || c=mysql; d=mariadb-dump; command -v mariadb-dump >/dev/null || d=mysqldump'
+    bd=${BD_ORIGEN:-}
+    if [[ -z "$bd" ]]; then
+      bd=$(docker exec "$origen" sh -c "$en; \$c -uroot -N -e 'SHOW DATABASES'" | tr -d '\r' \
+           | grep -vxE 'information_schema|mysql|performance_schema|sys|.*_test' || true)
+      [[ -n "$bd" ]] || die "no veo ninguna base de datos en $origen"
+      [[ $(wc -l <<< "$bd") == 1 ]] || die "$origen tiene varias bases ($(echo $bd)): elige con BD_ORIGEN=<base> delante"
+    fi
+    [[ "$bd" =~ ^[A-Za-z0-9_]+$ ]] || die "base no válida: '$bd'"
+    log "vuelco $bd de $origen"
+    (umask 077; docker exec "$origen" sh -c "$en; exec \$d -uroot --single-transaction --routines --triggers $bd" | gzip > "$fichero") \
+      || { rm -f "$fichero"; die "no se pudo volcar $bd de $origen"; }
+  fi
+  # sin pipefail: grep -q corta la tuberia en cuanto lo encuentra
+  ( set +o pipefail; gunzip -c "$fichero" 2>/dev/null | grep -q -m1 'CREATE TABLE' ) || { rm -f "$fichero"; die "el volcado está vacío o no es de MariaDB"; }
+  log "volcado: $fichero"
+  cmd_restaurar "$ent" "$fichero" "$si"
+  if [[ -n "$app_origen" ]]; then
+    local cid; cid=$(dc "$ent" ps -q app)
+    docker inspect "$app_origen" >/dev/null 2>&1 || die "no encuentro el contenedor $app_origen"
+    log "copio los adjuntos de $app_origen"
+    docker cp "$app_origen:/app/media" - | docker cp - "$cid:/app/" \
+      || die "no se pudieron copiar los adjuntos (los datos sí están importados)"
+  fi
+  log "LISTO: $ent tiene los datos de $origen"
 }
 
 # ── keycloak: login unico (AUTH_MODO=sso) ────────────────────────────────────
@@ -1035,7 +1192,7 @@ cmd_keycloak() {
   fi
 }
 
-uso() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+uso() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 case "${1:-}" in
   preparar)   shift; cmd_preparar "$@" ;;
@@ -1054,6 +1211,8 @@ case "${1:-}" in
   apps)       cmd_apps ;;
   dominio)    shift; cmd_dominio "$@" ;;
   npm-acceso) cmd_npm_acceso ;;
+  publicar)   shift; cmd_publicar "$@" ;;
+  importar)   shift; cmd_importar "$@" ;;
   ci)         cmd_ci ;;
   *)          uso; exit 1 ;;
 esac
