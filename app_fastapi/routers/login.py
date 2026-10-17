@@ -17,6 +17,10 @@ from ..templating import templates
 
 router = APIRouter(tags=["login"])
 
+# Entrar desde la portada (/login/?next=/portada/): quien no tiene Tareas
+# entra igual, pero solo en la portada (auth.iniciar_sesion_portada)
+_PORTADA = "/portada/"
+
 
 def _next_seguro(next_url: str) -> str:
     """El destino tras el login viene de la propia URL (?next=...) -- se
@@ -46,7 +50,10 @@ def procesar_login(
     next_url = _next_seguro(next)
     try:
         usuario, es_it, admin_global = auth.verificar_credenciales(username, password)
-    except auth.SinAccesoApp:
+    except auth.SinAccesoApp as e:
+        if next_url == _PORTADA and e.usuario:
+            auth.iniciar_sesion_portada(request, e.usuario, e.grupos)
+            return RedirectResponse(url=next_url, status_code=303)
         return templates.TemplateResponse(request, "login.html", {"error": False, "sin_acceso": True, "next": next_url})
     if not usuario:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url})
@@ -63,7 +70,13 @@ def volver_de_sso(request: Request, code: str = "", state: str = "", error: str 
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True})
     try:
         usuario, es_it, admin_global, id_token = auth.sso_completar(code, request.headers.get("host", ""))
-    except auth.SinAccesoApp:
+    except auth.SinAccesoApp as e:
+        if next_url == _PORTADA and e.usuario:
+            # no tiene Tareas, pero si puede ver la portada (con sus apps)
+            auth.iniciar_sesion_portada(request, e.usuario, e.grupos)
+            if getattr(e, "id_token", ""):
+                request.session["sso_id_token"] = e.id_token
+            return RedirectResponse(url=next_url, status_code=303)
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True, "sin_acceso": True})
     if not usuario:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True})
