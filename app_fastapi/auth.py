@@ -298,6 +298,13 @@ def verificar_credenciales(username: str, password: str):
 def iniciar_sesion(request: Request, username: str, es_it: bool = False) -> None:
     request.session["usuario"] = username
     request.session["es_it"] = es_it
+    # con Keycloak, IT lo dice el grupo de cada login: se apunta en auth_user
+    # para que los permisos de los espacios (db.puede_actuar_en_proyecto) lo
+    # vean. En local is_staff ya es el origen de es_it, asi que no cambia nada.
+    try:
+        db.marcar_it(username, es_it)
+    except Exception:  # noqa: BLE001 -- el login no debe caer por esto
+        pass
 
 
 def cerrar_sesion(request: Request) -> None:

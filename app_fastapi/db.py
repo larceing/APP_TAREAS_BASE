@@ -1149,6 +1149,31 @@ def quitar_miembro_espacio(espacio_id: str, user_id: int) -> None:
         conn.close()
 
 
+def marcar_it(username: str, es_it: bool) -> None:
+    """auth_user.is_staff = si la persona es IT (lo llama auth.iniciar_sesion)."""
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE auth_user SET is_staff=%s WHERE username=%s AND is_staff<>%s",
+                        (1 if es_it else 0, username, 1 if es_it else 0))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def es_it_usuario(user_id: int) -> bool:
+    if user_id is None:
+        return False
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_staff FROM auth_user WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+            return bool(row and row[0])
+    finally:
+        conn.close()
+
+
 def rol_en_espacio(espacio_id: str, user_id: int):
     """None si no es miembro, o 'admin'/'editor'/'lector' si lo es."""
     if user_id is None:
@@ -1250,13 +1275,14 @@ def puede_actuar_en_proyecto(proyecto_id: str, user_id: int, permiso: str, asign
     crear/editar/borrar el PROYECTO en si. Sin espacio asignado -> True
     (proyecto legado, mismo criterio que _puede_editar_espacio_de en
     tablero.py). Admin del espacio -> True siempre. Lector o no-miembro ->
-    False. Editor -> True si la tarea es suya (asignado_a == user_id,
+    False (salvo IT, que siempre puede). Editor -> True si la tarea es suya (asignado_a == user_id,
     cuando aplica), si no, el valor del interruptor `permiso`."""
     proyecto = get_proyecto(proyecto_id)
     if not proyecto or not proyecto["espacio_id"]:
         return True
     rol = rol_en_espacio(proyecto["espacio_id"], user_id)
-    if rol == "admin":
+    # IT administra la app entera: actua en todos los espacios, sea o no miembro
+    if rol == "admin" or es_it_usuario(user_id):
         return True
     if rol != "editor":
         return False

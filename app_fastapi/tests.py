@@ -709,6 +709,32 @@ class PuedeActuarEnProyectoTests(EntornoAisladoTestCase):
     def test_editor_con_interruptor_on(self):
         self.assertTrue(db.puede_actuar_en_proyecto(self.proyecto_id, self.editor_id, "editores_eliminan_tareas_ajenas"))
 
+    def test_it_puede_aunque_no_sea_miembro(self):
+        """Con Keycloak, IT llega en el login (grupo) y se apunta en auth_user:
+        tiene que poder actuar en espacios de los que no es miembro."""
+        it_id = self._crear_usuario_de_prueba()
+        try:
+            conn = db.connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT username FROM auth_user WHERE id=%s", (it_id,))
+                    username = cur.fetchone()[0]
+            finally:
+                conn.close()
+            self.assertFalse(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+            db.marcar_it(username, True)
+            self.assertTrue(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+            db.marcar_it(username, False)
+            self.assertFalse(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+        finally:
+            conn = db.connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM auth_user WHERE id=%s", (it_id,))
+                conn.commit()
+            finally:
+                conn.close()
+
     def test_editor_con_interruptor_off_tarea_ajena(self):
         db.editar_permisos_espacio(self.espacio_id, editores_eliminan_tareas_ajenas=False)
         self.assertFalse(db.puede_actuar_en_proyecto(
@@ -2345,6 +2371,36 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         self.assertEqual((metodo, url), ("POST", "https://api.github.com/repos/alguien/app/releases"))
         self.assertEqual(mock.call_args.kwargs["json"]["tag_name"], "v1.10.3")
         self.assertEqual(mock.call_args.kwargs["headers"]["Authorization"], "Bearer secreto-123")
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_pasar_a_pro_aprueba_sola_cuando_llega(self, mock):
+        mock.side_effect = [
+            _respuesta(200, {"workflow_runs": [{"id": 7, "head_branch": "v1.0.2", "status": "in_progress"}]}),
+            _respuesta(200, {"workflow_runs": [{"id": 6, "head_branch": "v1.0.1", "status": "completed"},
+                                               {"id": 7, "head_branch": "v1.0.2", "status": "waiting"}]}),
+            _respuesta(200, [{"environment": {"name": "pro", "id": 55}, "current_user_can_approve": True}]),
+            _respuesta(200, {}),
+        ]
+        self.assertTrue(self.d.aprobar_cuando_llegue("v1.0.2", dormir=lambda s: None))
+        metodo, url = mock.call_args.args
+        self.assertEqual((metodo, url), ("POST", "https://api.github.com/repos/alguien/app/actions/runs/7/pending_deployments"))
+        self.assertEqual(mock.call_args.kwargs["json"]["state"], "approved")
+        self.assertEqual(mock.call_args.kwargs["json"]["environment_ids"], [55])
+
+    @patch("app_fastapi.despliegues.requests.request")
+    def test_pasar_a_pro_no_aprueba_si_fallan_las_pruebas(self, mock):
+        mock.return_value = _respuesta(200, {"workflow_runs": [{"id": 7, "head_branch": "v1.0.2", "status": "completed", "conclusion": "failure"}]})
+        self.assertFalse(self.d.aprobar_cuando_llegue("v1.0.2", dormir=lambda s: None))
+        self.assertEqual(mock.call_count, 1)
+
+    @patch("app_fastapi.despliegues.aprobar_en_segundo_plano")
+    @patch("app_fastapi.despliegues.crear_version", return_value="v1.0.2")
+    def test_boton_pasar_a_pro(self, crear, aprobar):
+        self.client.post("/configuracion/despliegues/nueva-version/", data={"tipo": "patch", "a_pro": "1"})
+        aprobar.assert_called_once_with("v1.0.2")
+        aprobar.reset_mock()
+        self.client.post("/configuracion/despliegues/nueva-version/", data={"tipo": "patch"})
+        aprobar.assert_not_called()
 
     @patch("app_fastapi.despliegues.requests.request")
     def test_desplegar_y_rollback_lanzan_el_workflow(self, mock):

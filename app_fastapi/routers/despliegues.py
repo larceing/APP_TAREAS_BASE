@@ -45,8 +45,13 @@ async def crear_version(request: Request, usuario: str = Depends(auth.requiere_l
     form = await request.form()
     try:
         nueva = despliegues.crear_version(form.get("tipo", ""), form.get("notas", ""))
-        flash(request, "success", f"Versión {nueva} creada. Se está construyendo; en unos minutos "
-                                  "aparecerá aquí arriba para que la apruebes y llegue a PRO.")
+        if form.get("a_pro"):
+            despliegues.aprobar_en_segundo_plano(nueva)
+            flash(request, "success", f"Versión {nueva} creada. Se está construyendo y pasará sola a PRO "
+                                      "(unos 5 minutos); la tarjeta de PRO lo dirá con el punto verde.")
+        else:
+            flash(request, "success", f"Versión {nueva} creada. Se está construyendo; en unos minutos "
+                                      "aparecerá aquí arriba para que la apruebes y llegue a PRO.")
     except despliegues.DespliegueError as e:
         flash(request, "error", str(e))
     return _volver()
