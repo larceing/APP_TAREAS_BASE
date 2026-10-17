@@ -12,6 +12,9 @@
 #   tareas.sh restaurar ENT FICHERO    vuelve la BD de ENT a una copia
 #   tareas.sh pro-a-dev                copia los datos de pro en dev
 #   tareas.sh logs ENT                 log de la app de ENT
+#   tareas.sh keycloak ENT URL ISSUER [CLIENTE]
+#                                      login unico con Keycloak en ENT (pide
+#                                      el client secret y vuelve a arrancar)
 #
 # ENT = dev | pro. Todo vive junto a este script (p. ej. /opt/apps/tareas):
 #   <ENT>/.env                secretos y version actual (lo crea "preparar")
@@ -545,7 +548,38 @@ cmd_ci() {
   esac
 }
 
-uso() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+# ── keycloak: login unico (AUTH_MODO=sso) ────────────────────────────────────
+cmd_keycloak() {
+  local ent=${1:-} url=${2:-} issuer=${3:-} cliente=${4:-}
+  [[ -n "$ent" && -n "$url" && -n "$issuer" ]] \
+    || die "uso: tareas.sh keycloak ENT URL_DE_LA_APP ISSUER [CLIENTE]   (p. ej. keycloak dev https://dev.dominio.com/tareas https://dominio.com/auth/realms/REALM)"
+  entorno_valido "$ent"
+  cliente=${cliente:-tareas-$ent}
+  [[ "$url" =~ ^https?://[^[:space:]|]+$ && "$issuer" =~ ^https?://[^[:space:]|]+$ ]] || die "URL o ISSUER no válidos"
+  [[ "$cliente" =~ ^[A-Za-z0-9._-]+$ ]] || die "cliente no válido: '$cliente'"
+  local secreto_kc
+  read -rsp "Client secret de '$cliente' (Keycloak -> Clients -> $cliente -> Credentials): " secreto_kc; echo
+  [[ "$secreto_kc" =~ ^[A-Za-z0-9._~-]+$ ]] || die "client secret vacío o con caracteres raros"
+  local f="$DIR/$ent/app.env"
+  poner_var "$f" AUTH_MODO sso
+  poner_var "$f" KEYCLOAK_ISSUER "${issuer%/}"
+  poner_var "$f" KEYCLOAK_CLIENT_ID "$cliente"
+  poner_var "$f" KEYCLOAK_CLIENT_SECRET "$secreto_kc"
+  poner_var "$f" APP_URL_PUBLICA "${url%/}"
+  # quien entra: grupo /Tareas y sus subgrupos (/Tareas/Admin administra);
+  # el grupo IT administra todas las apps
+  poner_var "$f" KEYCLOAK_GRUPO_APP "${GRUPO_APP:-Tareas}"
+  chmod 600 "$f"
+  log "$ent: login con Keycloak ($cliente). Valid redirect URI del cliente: ${url%/}/login/sso/"
+  local version; version=$(var "$DIR/$ent/.env" VERSION)
+  if [[ -n "$version" ]]; then
+    cmd_desplegar "$ent" "$version"
+  else
+    log "$ent aún no tiene versión: se aplicará en el primer despliegue"
+  fi
+}
+
+uso() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 case "${1:-}" in
   preparar)   shift; cmd_preparar "$@" ;;
@@ -557,6 +591,7 @@ case "${1:-}" in
   restaurar)  shift; cmd_restaurar "$@" ;;
   pro-a-dev)  shift; cmd_pro_a_dev "$@" ;;
   logs)       shift; cmd_logs "$@" ;;
+  keycloak)   shift; cmd_keycloak "$@" ;;
   ci)         cmd_ci ;;
   *)          uso; exit 1 ;;
 esac

@@ -45,6 +45,33 @@ class NoEsIT(Exception):
     pass
 
 
+class SinAccesoApp(Exception):
+    """Keycloak acepta a la persona, pero no esta en el grupo de esta app
+    (KEYCLOAK_GRUPO_APP) ni es admin global -- login.py enseña un aviso."""
+    pass
+
+
+def acceso_por_grupos(grupos) -> tuple[bool, bool]:
+    """(puede_entrar, es_admin) segun los grupos de Keycloak (claim "groups").
+
+    Un grupo por app con subgrupos (el mapper del cliente con "Full group
+    path" activado, para que lleguen como /Tareas/Admin):
+      /<App>               entra en la app
+      /<App>/Admin         administra solo esta app
+      /<App>/<Otro>        entra (departamentos y demas)
+      KEYCLOAK_GRUPO_ADMIN_GLOBAL (por defecto IT): entra y administra todas.
+    Sin KEYCLOAK_GRUPO_APP entra cualquiera del realm y solo el admin global
+    administra (lo de siempre)."""
+    nombres = {g.strip().strip("/") for g in (grupos or []) if isinstance(g, str)}
+    admin_global = os.getenv("KEYCLOAK_GRUPO_ADMIN_GLOBAL", "IT").strip().strip("/")
+    es_global = bool(admin_global) and admin_global in nombres
+    app = os.getenv("KEYCLOAK_GRUPO_APP", "").strip().strip("/")
+    if not app:
+        return True, es_global
+    en_app = any(g == app or g.startswith(app + "/") for g in nombres)
+    return es_global or en_app, es_global or f"{app}/Admin" in nombres
+
+
 def _verificar_keycloak(username: str, password: str):
     """(None, False) si Keycloak rechaza las credenciales (o no responde), o
     (username canónico, es_it) si son correctas. "es_it" viene del grupo de
@@ -84,6 +111,15 @@ def _verificar_keycloak(username: str, password: str):
         return None, False
     try:
         access_token = token_resp.json()["access_token"]
+    except (ValueError, KeyError):
+        return None, False
+    return _usuario_de_keycloak(issuer, access_token)
+
+
+def _usuario_de_keycloak(issuer: str, access_token: str):
+    """(username, es_it) a partir del access token, via /userinfo -- comun al
+    modo keycloak (formulario propio) y al modo sso (pantalla de Keycloak)."""
+    try:
         userinfo_resp = requests.get(
             f"{issuer}/protocol/openid-connect/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -94,8 +130,69 @@ def _verificar_keycloak(username: str, password: str):
     if userinfo_resp.status_code != 200:
         return None, False
     datos = userinfo_resp.json()
-    es_it = "IT" in datos.get("groups", [])
+    puede, es_it = acceso_por_grupos(datos.get("groups"))
+    if not puede:
+        raise SinAccesoApp(datos.get("preferred_username"))
     return datos.get("preferred_username"), es_it
+
+
+# ── modo sso: inicio de sesion unico en la pantalla de Keycloak ───────────
+# Authorization Code Flow: /login/ manda a Keycloak, Keycloak vuelve a
+# /login/sso/?code=...&state=..., y aqui se cambia el code por un token
+# (peticion directa backend -> issuer, como en el modo keycloak, por eso no
+# hace falta validar la firma del token). Si la persona ya entro en otra app
+# del mismo realm, Keycloak no vuelve a pedir la contraseña.
+
+def sso_redirect_uri() -> str:
+    return os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/") + "/login/sso/"
+
+
+def sso_url_login(state: str) -> str:
+    from urllib.parse import urlencode
+    issuer = os.getenv("KEYCLOAK_ISSUER", "")
+    return f"{issuer}/protocol/openid-connect/auth?" + urlencode({
+        "client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "response_type": "code",
+        "scope": "openid", "redirect_uri": sso_redirect_uri(), "state": state,
+    })
+
+
+def sso_completar(code: str):
+    """(None, False) si Keycloak no acepta el code; (username, es_it) si si.
+    Igual que verificar_credenciales, da de alta la fila de auth_user."""
+    issuer = os.getenv("KEYCLOAK_ISSUER")
+    if not issuer or not code:
+        return None, False
+    try:
+        token_resp = requests.post(
+            f"{issuer}/protocol/openid-connect/token",
+            data={
+                "grant_type": "authorization_code", "code": code,
+                "redirect_uri": sso_redirect_uri(),
+                "client_id": os.getenv("KEYCLOAK_CLIENT_ID"),
+                "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
+            },
+            timeout=5,
+        )
+        access_token = token_resp.json()["access_token"] if token_resp.status_code == 200 else None
+    except (requests.RequestException, ValueError, KeyError):
+        return None, False
+    if not access_token:
+        return None, False
+    usuario, es_it = _usuario_de_keycloak(issuer, access_token)
+    if usuario:
+        _asegurar_auth_user(usuario)
+    return usuario, es_it
+
+
+def sso_url_logout() -> str:
+    """Cierra tambien la sesion de Keycloak (si no, la siguiente visita entraria
+    sola) y vuelve a SSO_URL_SALIDA (la portada) o a la propia app."""
+    from urllib.parse import urlencode
+    issuer = os.getenv("KEYCLOAK_ISSUER", "")
+    salida = os.getenv("SSO_URL_SALIDA", "").strip() or os.getenv("APP_URL_PUBLICA", "").strip().rstrip("/") + "/"
+    return f"{issuer}/protocol/openid-connect/logout?" + urlencode({
+        "client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "post_logout_redirect_uri": salida,
+    })
 
 
 def _asegurar_auth_user(username: str) -> None:

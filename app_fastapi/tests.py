@@ -2265,6 +2265,12 @@ class DespliegueVersionTests(unittest.TestCase):
             r = TestClient(app, follow_redirects=False).get("/version/")
         self.assertEqual((r.status_code, r.json()), (200, {"version": "v9.9.9"}))
 
+    def test_la_version_se_ve_en_el_login(self):
+        with patch.dict("os.environ", {"APP_VERSION": "v9.9.9", "AUTH_MODO": "local"}):
+            r = TestClient(app, follow_redirects=False).get("/login/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Versión v9.9.9", r.text)
+
 
 def _respuesta(status=200, datos=None):
     r = Mock(status_code=status, content=b"x" if datos is not None else b"")
@@ -2431,3 +2437,83 @@ class RutaBaseTests(unittest.TestCase):
         r = client.get("/ir/", headers={"X-Forwarded-Prefix": "/a b<x"}, follow_redirects=False)
         self.assertEqual(r.headers["location"], "/notas/")
 
+
+# ── AUTH_MODO=sso: inicio de sesion en la pantalla de Keycloak ──────────────
+
+_SSO_ENV = dict(_KEYCLOAK_ENV, AUTH_MODO="sso", APP_URL_PUBLICA="https://apps.test/tareas")
+
+
+@patch.dict("os.environ", _SSO_ENV)
+class SsoTests(EntornoAisladoTestCase):
+
+    def test_login_manda_a_keycloak_con_state(self):
+        client = TestClient(app)
+        r = client.get("/login/?next=/notas/", follow_redirects=False)
+        self.assertEqual(r.status_code, 307)
+        self.assertTrue(r.headers["location"].startswith("http://keycloak.test/realms/demo/protocol/openid-connect/auth?"))
+        self.assertIn("redirect_uri=https%3A%2F%2Fapps.test%2Ftareas%2Flogin%2Fsso%2F", r.headers["location"])
+
+    def test_state_distinto_no_inicia_sesion(self):
+        client = TestClient(app)
+        client.get("/login/", follow_redirects=False)
+        with patch("app_fastapi.auth.requests.post") as mock_post:
+            r = client.get("/login/sso/?code=abc&state=otro", follow_redirects=False)
+        mock_post.assert_not_called()
+        self.assertIn("No se pudo completar", r.text)
+
+    @patch("app_fastapi.auth.requests.get")
+    @patch("app_fastapi.auth.requests.post")
+    def test_vuelta_correcta_inicia_sesion(self, mock_post, mock_get):
+        from urllib.parse import parse_qs, urlparse
+        usuario = TEST_PREFIX + "sso"
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"access_token": "tok"})
+        mock_get.return_value = Mock(status_code=200, json=lambda: {"preferred_username": usuario, "groups": ["IT"]})
+        client = TestClient(app)
+        try:
+            ida = client.get("/login/?next=/notas/", follow_redirects=False).headers["location"]
+            state = parse_qs(urlparse(ida).query)["state"][0]
+            r = client.get(f"/login/sso/?code=abc&state={state}", follow_redirects=False)
+            self.assertEqual((r.status_code, r.headers["location"]), (303, "/notas/"))
+            self.assertEqual(mock_post.call_args.kwargs["data"]["grant_type"], "authorization_code")
+            self.assertIsNotNone(db.get_user_id(usuario))
+            salida = client.get("/logout/", follow_redirects=False).headers["location"]
+            self.assertTrue(salida.startswith("http://keycloak.test/realms/demo/protocol/openid-connect/logout?"))
+        finally:
+            conn = db.connect()
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM auth_user WHERE username=%s", (usuario,))
+            conn.commit()
+            conn.close()
+
+    @patch("app_fastapi.auth.requests.get")
+    @patch("app_fastapi.auth.requests.post")
+    def test_sin_el_grupo_de_la_app_no_entra(self, mock_post, mock_get):
+        from urllib.parse import parse_qs, urlparse
+        usuario = TEST_PREFIX + "sso_sin"
+        mock_post.return_value = Mock(status_code=200, json=lambda: {"access_token": "tok"})
+        mock_get.return_value = Mock(status_code=200, json=lambda: {"preferred_username": usuario, "groups": ["/Stock"]})
+        client = TestClient(app)
+        with patch.dict("os.environ", {"KEYCLOAK_GRUPO_APP": "Tareas"}):
+            ida = client.get("/login/", follow_redirects=False).headers["location"]
+            state = parse_qs(urlparse(ida).query)["state"][0]
+            r = client.get(f"/login/sso/?code=abc&state={state}", follow_redirects=False)
+        self.assertIn("no tiene acceso a esta aplicación", r.text)
+        self.assertIsNone(db.get_user_id(usuario))
+        self.assertIn(client.get("/", follow_redirects=False).status_code, (302, 303, 307))
+
+
+class AccesoPorGruposTests(unittest.TestCase):
+
+    def test_sin_grupo_de_app_entra_cualquiera(self):
+        with patch.dict("os.environ", {"KEYCLOAK_GRUPO_APP": "", "KEYCLOAK_GRUPO_ADMIN_GLOBAL": "IT"}):
+            self.assertEqual(auth.acceso_por_grupos([]), (True, False))
+            self.assertEqual(auth.acceso_por_grupos(["IT"]), (True, True))
+
+    def test_grupo_de_app_subgrupos_y_admin(self):
+        with patch.dict("os.environ", {"KEYCLOAK_GRUPO_APP": "/Tareas", "KEYCLOAK_GRUPO_ADMIN_GLOBAL": "IT"}):
+            self.assertEqual(auth.acceso_por_grupos(["/Stock", "/Stock/Admin"]), (False, False))
+            self.assertEqual(auth.acceso_por_grupos(["/Tareas"]), (True, False))
+            self.assertEqual(auth.acceso_por_grupos(["/Tareas/Compras"]), (True, False))
+            self.assertEqual(auth.acceso_por_grupos(["/Tareas/Admin"]), (True, True))
+            self.assertEqual(auth.acceso_por_grupos(["/IT"]), (True, True))
+            self.assertEqual(auth.acceso_por_grupos(["/TareasOtra"]), (False, False))
