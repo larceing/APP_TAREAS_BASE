@@ -8,8 +8,11 @@ cifrado en ajustes_app de la BD REAL, y pregunta a cada entorno su version
 en GET /version/. Ver docs/DESPLIEGUE.md."""
 from __future__ import annotations
 
+import logging
 import os
 import re
+import threading
+import time
 
 import requests
 
@@ -25,6 +28,9 @@ _PREFIJO = "despliegue."
 # los ajustes van a la BD REAL (el panel no cambia con el entorno de datos);
 # los tests lo ponen a False, como escritorio_servicios.USAR_BD_REAL
 USAR_BD_REAL = True
+
+
+log = logging.getLogger(__name__)
 
 
 class DespliegueError(Exception):
@@ -183,6 +189,41 @@ def revisar(run_id: int, entorno_id: int, aprobar: bool) -> None:
         "environment_ids": [int(entorno_id)], "state": "approved" if aprobar else "rejected",
         "comment": "Desde el panel de despliegues de la app",
     })
+
+
+def aprobar_cuando_llegue(version: str, cada: int = 15, hasta: int = 1500, dormir=time.sleep) -> bool:
+    """Espera a que la release 'version' deje PRO esperando aprobacion y la
+    aprueba: quien pulsa "Pasar a PRO" en el panel ya ha decidido, no hace
+    falta un segundo clic. Si la ejecucion acaba antes (fallan las pruebas),
+    no hay nada que aprobar. True si la aprobo."""
+    t = 0
+    while t <= hasta:
+        try:
+            a = ajustes()
+            datos = _github("GET", f"/actions/workflows/{a['workflow']}/runs?event=release&per_page=10") or {}
+            for r in datos.get("workflow_runs", []):
+                if r.get("head_branch") != version:
+                    continue
+                if r.get("status") == "completed":
+                    log.info("despliegue %s: la ejecución acabó (%s) sin pedir aprobación", version, r.get("conclusion"))
+                    return False
+                if r.get("status") == "waiting":
+                    for p in _github("GET", f"/actions/runs/{r['id']}/pending_deployments") or []:
+                        if p["environment"]["name"] == "pro" and p.get("current_user_can_approve"):
+                            revisar(r["id"], p["environment"]["id"], True)
+                            log.info("despliegue %s: aprobado para PRO desde el panel", version)
+                            return True
+        except DespliegueError as e:
+            log.warning("despliegue %s: %s", version, e)
+        dormir(cada)
+        t += cada
+    log.warning("despliegue %s: no llegó a pedir aprobación; queda para aprobar a mano en el panel", version)
+    return False
+
+
+def aprobar_en_segundo_plano(version: str) -> None:
+    threading.Thread(target=aprobar_cuando_llegue, args=(version,), daemon=True,
+                     name=f"aprobar-{version}").start()
 
 
 def preparar_entornos() -> None:

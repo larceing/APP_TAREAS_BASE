@@ -158,7 +158,7 @@ Conexión con GitHub*:
   `https://pro.tudominio.com/tareas` (o su dominio propio, si ya lo tiene).
 
 Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
-*Crear versión* (será la `v1.0.0`).
+*Pasar a PRO* (será la `v1.0.0`).
 
 ## Panel de despliegues
 
@@ -169,8 +169,8 @@ Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
 |---|---|
 | Ver qué versión tiene cada entorno | Las tarjetas de arriba (punto verde = responde) |
 | Probar un cambio | Nada: cada cambio en `main` llega solo a DEV |
-| Sacar una versión | *Sacar una versión nueva* → tipo (arreglos, funciones nuevas, cambios grandes) → *Crear versión* |
-| Pasarla a PRO | Aviso amarillo *espera aprobación para PRO* → **Aprobar** |
+| Sacar una versión y ponerla en PRO | *Pasar a PRO lo que hay en DEV* → tipo (arreglos, funciones nuevas, cambios grandes) → **Pasar a PRO**: el panel aprueba solo el paso a PRO en cuanto la versión está construida |
+| Elegir tú cuándo entra en PRO | Igual, sin la casilla *Ponerla en PRO sola*; luego aviso amarillo *espera aprobación para PRO* → **Aprobar** |
 | Volver atrás | *↩ Volver a la anterior* en la tarjeta del entorno |
 | Poner una versión concreta | Escribirla (o elegirla de la lista) en la tarjeta → *Poner* |
 | Ver si algo falló | *Últimas ejecuciones* → *detalle* |

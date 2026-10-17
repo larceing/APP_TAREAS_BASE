@@ -19,11 +19,14 @@ detrás y te enseña el resultado.
 ### Pasar a PRO lo que ya funciona en DEV
 
 1. Prueba en DEV lo que hayas cambiado.
-2. En el panel, **Sacar una versión nueva**: elige *Arreglos* (lo normal),
-   escribe en una frase qué cambia y pulsa **Crear versión**.
-3. Espera unos minutos. Arriba sale un aviso amarillo: *«... espera aprobación
-   para PRO»*. Pulsa **Aprobar**.
-4. Al rato, la tarjeta de PRO enseña la versión nueva con el punto verde.
+2. En el panel, **Pasar a PRO lo que hay en DEV**: elige *Arreglos* (lo
+   normal), escribe si quieres en una frase qué cambia y pulsa **Pasar a PRO**.
+3. Espera unos 5 minutos: la tarjeta de PRO enseña la versión nueva con el
+   punto verde. Ya está.
+
+Si quitas la casilla *Ponerla en PRO sola*, la versión se queda esperando y
+arriba sale un aviso amarillo con el botón **Aprobar**, para elegir tú el
+momento.
 
 ### Algo ha ido mal en PRO
 
