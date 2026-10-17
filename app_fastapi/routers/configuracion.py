@@ -40,6 +40,7 @@ TITULOS_TAB = {
     "textos": "Textos", "mantis": "Mantis", "sistema": "Copias de seguridad", "api": "API",
     "calendario_sync": "Calendario externo", "nexus": "Nexus", "conectores": "Conectores",
     "recordatorio": "Recordatorio", "vigilante": "Vigilante de Mantis", "vigia": "Vigía de carpeta",
+    "despliegues": "Despliegues",
 }
 
 # Como traer el contenido de cada pestana -- un dict {tipo: funcion} en vez
@@ -60,11 +61,13 @@ _CARGADORES = {
     "recordatorio": lambda: db.load_recordatorio_mensajes(real=escritorio_servicios.USAR_BD_REAL),
     "vigilante": lambda: [],  # panel propio (ver ctx["esc_cfg"])
     "vigia": lambda: [],  # panel propio (ver ctx["esc_cfg"])
+    "despliegues": lambda: [],  # panel propio (ver ctx["despliegue"])
 }
 
 
 # pestañas que solo existen con su modulo opcional activo
 _MODULO_DE_TAB = {"mantis": "mantis", "vigilante": "mantis", "nexus": "nexus", "conectores": "conectores",
+                  "despliegues": "despliegues",
                   "recordatorio": "escritorio", "vigia": "escritorio"}
 
 
@@ -109,6 +112,9 @@ def ver_configuracion(request: Request, tipo: str = "empresas", usuario: str = D
         except (ValueError, TypeError):
             ctx["mantis_usuario_map"] = {}
         ctx["usuarios"] = db.load_usuarios()
+    if tab_activo == "despliegues":
+        from .. import despliegues
+        ctx["despliegue"] = despliegues.panel()
     if tab_activo == "nexus":
         ctx["nexus_acceso"] = db.get_ajuste("nexus.acceso", "it")
     if tab_activo == "api":

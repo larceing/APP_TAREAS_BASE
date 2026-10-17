@@ -17,6 +17,13 @@ RUN pip install -r app_fastapi/requirements.txt
 COPY app_fastapi app_fastapi
 COPY scripts scripts
 COPY docs docs
+# compose del despliegue por entornos: tareas.sh lo saca de cada version
+COPY despliegue/servidor despliegue/servidor
+
+# version de la imagen (la pone GitHub Actions: v1.2.0, sha-1a2b3c4...)
+ARG APP_VERSION=local
+ENV APP_VERSION=$APP_VERSION
+LABEL org.opencontainers.image.version=$APP_VERSION
 
 # datos que deben sobrevivir al contenedor (volumenes en docker-compose.yml)
 RUN mkdir -p data media app_fastapi/logs .cache
