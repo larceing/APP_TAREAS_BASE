@@ -180,9 +180,20 @@ mandar a entrar y a salir. Hay uno solo, el de PRO (también desde la portada
 de DEV; `PORTADA_URL` en `pro/.env` si `tareas.sh` no adivina su dirección).
 Solo para el grupo global de IT (`KEYCLOAK_GRUPO_ADMIN_GLOBAL`, por defecto
 `IT`; en modo local, `is_staff`): el Admin de una sola app (`/Tareas/Admin`) no
-ve el botón y la página no le abre. La portada es estática y pregunta a
-`/ajustes/acceso/` quién ha entrado y si es IT; la página lo vuelve a comprobar
-en el servidor. **Entrar** y **Salir** de la portada vuelven a la portada.
+ve el botón y la página no le abre. **Entrar** y **Salir** de la portada
+vuelven a la portada.
+
+**La portada pide login.** `https://pro.tudominio.com/` no enseña nada sin
+sesión: manda al login y vuelve. La sirve Tareas (`/ajustes/portada-entorno/`),
+con la lista de apps que la entrada le pasa en `X-Portada-Apps` (sale de
+`apps/*.conf`; el navegador no puede cambiarla), y cada persona ve solo las
+apps de sus grupos de Keycloak (el grupo o un subgrupo): `/PRO/Lin-AI` ve
+Lin-AI, quien está en el grupo de Tareas ve Tareas, e IT lo ve todo, con la
+versión de cada app y el botón Ajustes. Quien no tiene Tareas entra igual,
+pero solo en la portada. El grupo de cada app: `# grupo: PRO/Nombre` en su
+`.conf` (las creadas desde el panel ya lo llevan) o, para las que escribe otro
+script, `./tareas.sh portada-grupo linai Lin-AI` (vale para DEV y PRO). Sin
+grupo, la app solo la ve IT.
 
 Hay una tarjeta por app del servidor:
 
@@ -339,7 +350,8 @@ Actions access* hay que dar lectura a este repositorio.
 
 Una app que no se crea así (como Lin-AI) también puede sumarse: un fichero
 `entrada/<entorno>/apps/<app>.conf` como `tareas.conf`, y `./tareas.sh portada`.
-La línea `# app: Nombre` es su tarjeta en la portada; con `# salud: <camino>`
+La línea `# app: Nombre` es su tarjeta en la portada (y `./tareas.sh
+portada-grupo <app> <Grupo>` quién la ve); con `# salud: <camino>`
 (por defecto `version/`) la portada pide `<ruta><camino>` para ver si está en
 marcha, y su versión si responde JSON con `"version"`. Si la app no responde,
 la entrada enseña una página de "no disponible" en vez de un 502.

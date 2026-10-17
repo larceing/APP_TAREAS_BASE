@@ -12,7 +12,8 @@ tal cual) y con X-Ruta-App, donde esta Tareas, para el login y Salir. La
 pagina (servidor.html) no lleva nada de Tareas: ni su menu ni su nombre."""
 from fastapi import APIRouter, Depends
 from fastapi.requests import Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+import re
 
 from .. import auth, config, despliegues, ruta_base
 from ..flash import flash
@@ -43,11 +44,70 @@ def _ruta_app(request: Request) -> str:
 
 @router.get("/acceso/")
 def acceso(request: Request):
-    """Para la portada (pagina estatica): quien la mira (para "Salir" y
-    cambiar de usuario) y si es IT global (boton Ajustes). Sin sesion:
-    usuario null y admin false, sin pedir login."""
-    return JSONResponse({"usuario": request.session.get("usuario") or None,
+    """Para las portadas estaticas de antes: quien la mira y si es IT global.
+    Sin sesion: usuario null y admin false, sin pedir login."""
+    return JSONResponse({"usuario": request.session.get("usuario") or request.session.get("portada_usuario") or None,
                          "admin": auth.es_admin_global_sesion(request)}, headers={"Cache-Control": "no-store"})
+
+
+# ── la portada del entorno (https://pro.dominio/) ────────────────────────────
+# La entrada manda "/" aqui (location = /) con la lista de apps en
+# X-Portada-Apps ("ruta|nombre|salud|grupo;...", de sus apps/*.conf, ver
+# tareas.sh escribir_entrada_conf). Sin sesion no se ensena nada: al login.
+# Cada uno ve solo las apps de sus grupos de Keycloak (el grupo o un
+# subgrupo); IT global las ve todas, con su version, y el boton Ajustes.
+
+_RUTA_APP = re.compile(r"^[a-z][a-z0-9-]{0,30}$")
+_SALUD = re.compile(r"^[A-Za-z0-9._/-]*$")
+
+
+def _apps_de_la_entrada(request: Request) -> list:
+    crudo = request.headers.get("x-portada-apps", "")
+    try:
+        crudo = crudo.encode("latin-1").decode("utf-8")   # nginx manda los bytes tal cual
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    apps = []
+    for trozo in crudo.split(";"):
+        partes = (trozo.split("|") + ["", "", "", ""])[:4]
+        ruta, nombre, salud, grupo = (x.strip() for x in partes)
+        if not _RUTA_APP.match(ruta):
+            continue
+        salud = salud.lstrip("/") if _SALUD.match(salud) else "version/"
+        apps.append({"ruta": ruta, "nombre": nombre or ruta, "salud": salud or "version/", "grupo": grupo.strip("/")})
+    return apps
+
+
+def _puede_ver(app: dict, grupos: list, admin: bool, tiene_tareas: bool) -> bool:
+    if admin:
+        return True
+    if app["ruta"] == "tareas":
+        return tiene_tareas
+    g = app["grupo"]
+    return bool(g) and any(x == g or x.startswith(g + "/") for x in grupos)
+
+
+@router.get("/portada-entorno/")
+def ver_portada(request: Request):
+    ruta_app = _ruta_app(request)
+    usuario = request.session.get("usuario") or request.session.get("portada_usuario") or ""
+    if not usuario:
+        return RedirectResponse(url=ruta_app + "/login/?next=/portada/", status_code=303,
+                                headers={"Cache-Control": "no-store"})
+    admin = auth.es_admin_global_sesion(request)
+    grupos = request.session.get("grupos") or []
+    apps = [a for a in _apps_de_la_entrada(request)
+            if _puede_ver(a, grupos, admin, bool(request.session.get("usuario")))]
+    entorno = request.headers.get("x-portada-entorno", "")
+    entorno = entorno if re.match(r"^[a-z]{2,10}$", entorno) else ""
+    panel = request.headers.get("x-portada-ajustes", "") or "/ajustes/"
+    if not (panel.startswith("https://") or panel.startswith("/")) or '"' in panel or "<" in panel:
+        panel = "/ajustes/"
+    r = templates.TemplateResponse(request, "portada.html", {
+        "usuario": usuario, "admin": admin, "apps": apps, "entorno": entorno,
+        "ruta_app": ruta_app, "panel": panel})
+    r.headers["Cache-Control"] = "no-store"
+    return r
 
 
 def _usuario(request: Request) -> str:

@@ -2653,6 +2653,69 @@ class ServidorAccesoTests(unittest.TestCase):
         r = client.get("/ajustes/", headers={"X-Ruta-App": "/tareas"})
         self.assertEqual(r.headers["location"], "/tareas/login/?next=/ajustes/")
 
+    _APPS = "linai|Lin-AI (chat de IA)|version/|PRO/Lin-AI;paginas|P\u00e1ginas|version/|PRO/Paginas;tareas|Gestor de Tareas|version/|"
+
+    def _entrar_por_sso(self, client, completar):
+        """Login sso desde la portada (Entrar -> /login/?next=/portada/), con
+        Keycloak simulado: completar = lo que devuelve (o lanza) sso_completar."""
+        from urllib.parse import parse_qs, urlparse
+        r = client.get("/login/?next=/portada/")
+        state = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+        with patch("app_fastapi.auth.sso_completar", side_effect=[completar] if isinstance(completar, Exception) else None,
+                   return_value=None if isinstance(completar, Exception) else completar):
+            return client.get(f"/login/sso/?code=c&state={state}")
+
+    def _portada(self, client):
+        return client.get("/ajustes/portada-entorno/", headers={
+            "X-Ruta-App": "/tareas", "X-Portada-Entorno": "pro", "X-Portada-Ajustes": "https://pro.ejemplo.com/ajustes/",
+            "X-Portada-Apps": self._APPS.encode("utf-8")})
+
+    def test_portada_sin_sesion_no_ensena_nada(self):
+        r = self._portada(TestClient(app, follow_redirects=False))
+        self.assertEqual(r.headers["location"], "/tareas/login/?next=/portada/")
+        self.assertNotIn("Lin-AI", r.text)
+
+    def test_portada_solo_ensena_las_apps_de_tus_grupos(self):
+        client = TestClient(app, follow_redirects=False)
+        with patch.dict("os.environ", dict(_KEYCLOAK_ENV, AUTH_MODO="sso", KEYCLOAK_GRUPO_APP="PRO/Tareas")):
+            # sin Tareas pero con Lin-AI: entra solo en la portada
+            r = self._entrar_por_sso(client, auth.SinAccesoApp("ana", ["/PRO/Lin-AI/Editor"]))
+            self.assertEqual(r.headers["location"], "/portada/")
+            html = self._portada(client).text
+            self.assertIn("Lin-AI (chat de IA)", html)
+            self.assertNotIn("Páginas", html)
+            self.assertNotIn("Gestor de Tareas", html)
+            self.assertNotIn("Ajustes", html)
+            self.assertIn("var VERSIONES = false;", html)
+            self.assertIn("ana", html)
+            # y Tareas no le abre
+            self.assertIn(client.get("/").status_code, (302, 303, 307))
+            # desde otra pagina de Tareas sigue sin entrar
+            from urllib.parse import parse_qs, urlparse
+            r = client.get("/login/?next=/")
+            state = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+            with patch("app_fastapi.auth.sso_completar", side_effect=auth.SinAccesoApp("ana", [])):
+                r = client.get(f"/login/sso/?code=c&state={state}")
+            self.assertEqual(r.status_code, 200)   # el aviso de sin acceso
+
+    def test_portada_de_it_lo_ensena_todo(self):
+        client = TestClient(app, follow_redirects=False)
+        with patch.dict("os.environ", dict(_KEYCLOAK_ENV, AUTH_MODO="sso")):
+            self._entrar_por_sso(client, ("henry", True, True, ""))
+            html = self._portada(client).text
+        for nombre in ("Lin-AI (chat de IA)", "Páginas", "Gestor de Tareas", "⚙ Ajustes", "https://pro.ejemplo.com/ajustes/"):
+            self.assertIn(nombre, html)
+        self.assertIn("var VERSIONES = true;", html)
+
+    def test_grupos_del_login_se_guardan(self):
+        with patch.dict("os.environ", _KEYCLOAK_ENV), patch("app_fastapi.auth.requests.get") as get:
+            get.return_value = Mock(status_code=200, json=lambda: {"preferred_username": "u", "groups": ["/PRO/Tareas", "/PRO/Lin-AI/Editor"]})
+            auth._usuario_de_keycloak("http://k", "t")
+            sesion = {}
+            with patch("app_fastapi.db.marcar_it"):
+                auth.iniciar_sesion(Mock(session=sesion), "u")
+        self.assertEqual(sesion["grupos"], ["PRO/Lin-AI/Editor", "PRO/Tareas"])
+
     def test_ajustes_va_en_la_raiz_del_dominio_y_sin_nada_de_tareas(self):
         client = TestClient(app, follow_redirects=False)
         cab = {"Host": "pro.ejemplo.com", "X-Forwarded-Proto": "https"}

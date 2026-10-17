@@ -16,6 +16,8 @@
 #                                      login unico con Keycloak en ENT (pide
 #                                      el client secret y vuelve a arrancar)
 #   tareas.sh portada                  rehace la portada de cada entorno
+#   tareas.sh portada-grupo RUTA GRUPO quien ve esa app en la portada (el
+#                                      grupo de Keycloak, sin /DEV/ ni /PRO/)
 #   tareas.sh app-nueva RUTA IMAGEN PUERTO [SALUD] [NOMBRE]
 #                                      otra app en DEV y PRO (ruta, login, grupos)
 #   tareas.sh app-desplegar RUTA ENT VERSION   pone (o "anterior") esa version
@@ -190,29 +192,46 @@ YAML
   umask 077
 }
 
-# nginx de la entrada: portada en /, Ajustes del servidor en /ajustes/, una
-# app por ruta (apps/*.conf) y una pagina clara cuando la app no responde
-# (aun sin desplegar, arrancando...). /ajustes/ lo sirve Tareas, pero va en
-# la raiz y sin X-Forwarded-Prefix: es del servidor, no de Tareas. Con
-# X-Ruta-App sabe donde mandar a entrar y a salir.
-escribir_entrada_conf() {
-  cat > "$DIR/entrada/$1/default.conf" <<NGINX
+# nginx de la entrada. "/" (la portada) y "/ajustes/" los sirve Tareas, en
+# la raiz y sin X-Forwarded-Prefix: son del servidor, no de Tareas. La
+# portada pide login antes de ensenar nada y cada uno ve solo las apps de sus
+# grupos: por eso la lista de apps va en X-Portada-Apps (la pone esta entrada,
+# el navegador no puede cambiarla) y Tareas elige. X-Ruta-App: donde esta
+# Tareas, para entrar y salir. Una app por ruta (apps/*.conf) y una pagina
+# clara cuando una app no responde (aun sin desplegar, arrancando...).
+escribir_entrada_conf() {   # ENT [APPS] [AJUSTES]
+  local ent=$1 apps=${2:-} panel=${3:-/ajustes/}
+  cat > "$DIR/entrada/$ent/default.conf" <<NGINX
 # Entrada del entorno: portada en /, Ajustes en /ajustes/ y una app por ruta (apps/*.conf)
+# (lo escribe tareas.sh portada)
 server {
   listen 80;
   client_max_body_size 50m;
   resolver 127.0.0.11 valid=10s ipv6=off;
   error_page 502 503 504 /no-disponible.html;
-  location = / { root /etc/nginx/conf.d/html; try_files /index.html =404; }
   location = /no-disponible.html { root /etc/nginx/conf.d/html; internal; }
+  location = / {
+    set \$destino http://tareas-$ent:8000;
+    proxy_pass \$destino/ajustes/portada-entorno/;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+    proxy_set_header X-Forwarded-Prefix "";
+    proxy_set_header X-Ruta-App /tareas;
+    proxy_set_header X-Portada-Entorno $ent;
+    proxy_set_header X-Portada-Ajustes "$panel";
+    proxy_set_header X-Portada-Apps "$apps";
+  }
   location = /ajustes { return 308 /ajustes/; }
   location /ajustes/ {
-    set \$destino http://tareas-$1:8000;
+    set \$destino http://tareas-$ent:8000;
     proxy_pass \$destino;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+    proxy_set_header X-Forwarded-Prefix "";
     proxy_set_header X-Ruta-App /tareas;
   }
   include /etc/nginx/conf.d/apps/*.conf;
@@ -272,77 +291,52 @@ footer{text-align:center;color:var(--suave);font-size:13px;padding:24px}
 CSS
 }
 
-# portada del entorno: una tarjeta por app (la linea "# app: nombre" de su
-# .conf) con su estado, que se mira en <ruta><salud> ("# salud: ..." en el
-# .conf; por defecto version/, y si responde JSON con "version" se enseña)
+# Grupo de Keycloak que da acceso a una app (sin /DEV/ ni /PRO/), para la
+# portada: lo apunta "tareas.sh portada-grupo" en entrada/grupos (asi vale
+# aunque otro script reescriba el .conf de la app). Vacio: solo la ve IT.
+grupo_de_app() {   # RUTA
+  [[ -f "$DIR/entrada/grupos" ]] || return 0
+  awk -v r="$1" '$1 == r { print $2; exit }' "$DIR/entrada/grupos"
+}
+
+cmd_portada_grupo() {   # portada-grupo RUTA GRUPO
+  local ruta=${1:-} grupo=${2:-}
+  [[ -n "$ruta" && -n "$grupo" ]] || die "uso: tareas.sh portada-grupo RUTA GRUPO   (p. ej. portada-grupo linai Lin-AI: lo ven /DEV/Lin-AI y /PRO/Lin-AI)"
+  [[ "$ruta" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || die "ruta no válida: '$ruta'"
+  grupo=${grupo#/}; grupo=${grupo#DEV/}; grupo=${grupo#PRO/}
+  [[ "$grupo" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,60}$ ]] || die "grupo no válido: '$grupo' (p. ej. Lin-AI)"
+  umask 022
+  touch "$DIR/entrada/grupos"
+  awk -v r="$ruta" '$1 != r' "$DIR/entrada/grupos" > "$DIR/entrada/grupos.nuevo"
+  echo "$ruta $grupo" >> "$DIR/entrada/grupos.nuevo"
+  mv "$DIR/entrada/grupos.nuevo" "$DIR/entrada/grupos"
+  log "/$ruta/: la ven en la portada /DEV/$grupo y /PRO/$grupo (y sus subgrupos), e IT"
+  cmd_portada
+}
+
+# portada del entorno: la sirve Tareas (ver escribir_entrada_conf) con la
+# lista de apps de apps/*.conf: "# app: nombre", "# salud: ..." (por defecto
+# version/) y "# grupo: ENT/Grupo" (o el de entrada/grupos)
 escribir_portada() {
-  local ent=$1 f ruta nombre salud lista="" titulo sub
+  local ent=$1 f ruta nombre salud grupo lista="" panel
   for f in "$DIR/entrada/$ent/apps"/*.conf; do
     [[ -f "$f" ]] || continue
-    ruta="/$(basename "$f" .conf)/"
-    nombre=$(sed -n 's/^# app: //p' "$f" | head -n1)
-    nombre=${nombre:-$ruta}
+    ruta=$(basename "$f" .conf)
+    [[ "$ruta" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || continue
+    nombre=$(sed -n 's/^# app: //p' "$f" | head -n1 | tr -d '"\;|$')
     salud=$(sed -n 's/^# salud: *//p' "$f" | head -n1)
-    salud=${salud:-version/}
     [[ "$salud" =~ ^[A-Za-z0-9._/-]*$ ]] || salud=version/
-    lista+="<a class=\"app\" href=\"$ruta\" data-salud=\"$ruta${salud#/}\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
+    grupo=$(sed -n 's/^# grupo: *//p' "$f" | head -n1)
+    [[ -z "$grupo" ]] && grupo=$(grupo_de_app "$ruta") && [[ -n "$grupo" ]] && grupo="${ent^^}/$grupo"
+    [[ "$grupo" =~ ^[A-Za-z0-9/_.-]*$ ]] || grupo=""
+    lista+="${lista:+;}$ruta|${nombre:-$ruta}|${salud:-version/}|$grupo"
   done
-  [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
-  # Arriba a la derecha (lo pregunta a /ajustes/acceso/, que contesta Tareas):
-  # quien ha entrado y "Salir" para cambiar de usuario, y Ajustes del servidor
-  # solo si es IT global (la pagina lo vuelve a comprobar). Ajustes es uno
-  # solo, el de PRO, que lleva DEV y PRO de todas las apps: desde DEV tambien
-  # se va alli.
-  local ajustes="" panel
+  # Ajustes es uno solo, el de PRO, que lleva DEV y PRO de todas las apps:
+  # desde la portada de DEV tambien se va alli
   panel="$(url_portada pro)/ajustes/"
-  [[ -f "$DIR/entrada/$ent/apps/tareas.conf" ]] && \
-    ajustes="<div class=\"sesion\" id=\"sesion\" hidden><span id=\"quien\"></span><a class=\"salir\" id=\"salir\" href=\"/tareas/login/?next=/portada/\">Entrar</a><a class=\"ajustes\" id=\"ajustes\" href=\"$panel\" hidden>⚙ Ajustes</a></div>"
-  case $ent in
-    pro) titulo=Producción; sub="Las aplicaciones en uso. Entra con tu usuario de siempre." ;;
-    dev) titulo=Pruebas; sub="Versiones en pruebas: los datos de aquí no son los reales." ;;
-    *)   titulo=${ent^^}; sub="Aplicaciones de este entorno." ;;
-  esac
+  escribir_entrada_conf "$ent" "$lista" "$panel"
+  rm -f "$DIR/entrada/$ent/html/index.html"   # la de antes, estatica
   local css; css=$(estilos_entrada)
-  cat > "$DIR/entrada/$ent/html/index.html" <<HTML
-<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>$titulo · ${ent^^}</title>
-<style>$css</style>
-<main>
-  <div class="cab"><h1>$titulo</h1><span class="chip $ent">${ent^^}</span>$ajustes</div>
-  <p class="sub">$sub</p>
-  <div class="apps">$lista</div>
-</main>
-<footer>Entorno ${ent^^}</footer>
-<script>
-document.querySelectorAll(".app[data-salud]").forEach(function (a) {
-  var txt = a.querySelector(".txt");
-  fetch(a.dataset.salud, { cache: "no-store", headers: { Accept: "application/json" } })
-    .then(function (r) {
-      if (!r.ok) throw r;
-      a.classList.add("on"); txt.textContent = "En marcha";
-      return r.json().then(function (d) { if (d && d.version) txt.textContent = "En marcha · " + d.version; }, function () {});
-    })
-    .catch(function () { txt.textContent = "Sin desplegar o arrancando"; });
-});
-var sesion = document.getElementById("sesion");
-if (sesion) {
-  fetch("/ajustes/acceso/", { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" } })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) {
-      if (!d) return;
-      if (d.usuario) {
-        document.getElementById("quien").textContent = d.usuario;
-        var salir = document.getElementById("salir");
-        salir.textContent = "Salir"; salir.href = "/tareas/logout/?a=portada"; salir.title = "Cerrar sesión para entrar con otro usuario";
-      }
-      if (d.admin === true) document.getElementById("ajustes").hidden = false;
-      sesion.hidden = false;
-    })
-    .catch(function () {});
-}
-</script>
-</html>
-HTML
   cat > "$DIR/entrada/$ent/html/no-disponible.html" <<HTML
 <!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>No disponible · ${ent^^}</title>
@@ -364,7 +358,6 @@ cmd_portada() {
   umask 022
   for ent in $ENTORNOS; do
     [[ -d "$DIR/entrada/$ent" ]] || die "falta $DIR/entrada/$ent: ejecuta antes tareas.sh preparar"
-    escribir_entrada_conf "$ent"
     escribir_portada "$ent"
     docker exec "entrada-$ent" nginx -s reload >/dev/null 2>&1 || true
     log "$ent: portada actualizada"
@@ -896,6 +889,7 @@ JSON
 # app: $nombre
 # salud: ${salud:-version/}
 # creada-por: app-nueva
+# grupo: ${ent^^}/$grupo
 location = /$ruta { return 308 /$ruta/; }
 location /$ruta/ {
   set \$destino $ruta-$ent:$puerto;
@@ -1289,6 +1283,7 @@ case "${1:-}" in
   logs)       shift; cmd_logs "$@" ;;
   keycloak)   shift; cmd_keycloak "$@" ;;
   portada)    cmd_portada ;;
+  portada-grupo) shift; cmd_portada_grupo "$@" ;;
   app-nueva)  shift; cmd_app_nueva "$@" ;;
   app-desplegar) shift; cmd_app_desplegar "$@" ;;
   apps)       cmd_apps ;;

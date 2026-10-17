@@ -22,6 +22,7 @@ si es de IT."""
 import base64
 import hashlib
 import hmac
+import contextvars
 import os
 import secrets
 
@@ -47,8 +48,23 @@ class NoEsIT(Exception):
 
 class SinAccesoApp(Exception):
     """Keycloak acepta a la persona, pero no esta en el grupo de esta app
-    (KEYCLOAK_GRUPO_APP) ni es admin global -- login.py enseña un aviso."""
-    pass
+    (KEYCLOAK_GRUPO_APP) ni es admin global -- login.py enseña un aviso, o
+    si venia de la portada la deja entrar solo en la portada (con su usuario
+    y sus grupos, para ver sus apps)."""
+    def __init__(self, usuario=None, grupos=None):
+        super().__init__(usuario)
+        self.usuario = usuario
+        self.grupos = normalizar_grupos(grupos)
+
+
+def normalizar_grupos(grupos) -> list:
+    """Los grupos de Keycloak sin barras de los lados (/PRO/Tareas -> PRO/Tareas)."""
+    return sorted({g.strip().strip("/") for g in (grupos or []) if isinstance(g, str) and g.strip().strip("/")})
+
+
+# grupos del ultimo login con Keycloak en esta peticion (lo guarda
+# iniciar_sesion en la sesion, para la portada)
+_grupos_login: contextvars.ContextVar = contextvars.ContextVar("grupos_login", default=None)
 
 
 def acceso_por_grupos(grupos) -> tuple[bool, bool]:
@@ -140,7 +156,8 @@ def _usuario_de_keycloak(issuer: str, access_token: str):
     datos = userinfo_resp.json()
     puede, es_it = acceso_por_grupos(datos.get("groups"))
     if not puede:
-        raise SinAccesoApp(datos.get("preferred_username"))
+        raise SinAccesoApp(datos.get("preferred_username"), datos.get("groups"))
+    _grupos_login.set(normalizar_grupos(datos.get("groups")))
     return datos.get("preferred_username"), es_it, es_admin_global(datos.get("groups"))
 
 
@@ -206,10 +223,15 @@ def sso_completar(code: str, host: str = ""):
         return None, False, False, ""
     if not access_token:
         return None, False, False, ""
-    usuario, es_it, admin_global = _usuario_de_keycloak(issuer, access_token)
+    id_token = id_token if isinstance(id_token, str) else ""
+    try:
+        usuario, es_it, admin_global = _usuario_de_keycloak(issuer, access_token)
+    except SinAccesoApp as e:
+        e.id_token = id_token   # para cerrar luego la sesion de Keycloak sin preguntar
+        raise
     if usuario:
         _asegurar_auth_user(usuario)
-    return usuario, es_it, admin_global, (id_token if isinstance(id_token, str) else "")
+    return usuario, es_it, admin_global, id_token
 
 
 def sso_url_logout(id_token: str = "", host: str = "", salida: str = "") -> str:
@@ -307,6 +329,9 @@ def iniciar_sesion(request: Request, username: str, es_it: bool = False, admin_g
     request.session["usuario"] = username
     request.session["es_it"] = es_it
     request.session["admin_global"] = bool(admin_global)
+    grupos = _grupos_login.get()
+    if grupos is not None:
+        request.session["grupos"] = grupos
     # con Keycloak, IT lo dice el grupo de cada login: se apunta en auth_user
     # para que los permisos de los espacios (db.puede_actuar_en_proyecto) lo
     # vean. En local is_staff ya es el origen de es_it, asi que no cambia nada.
@@ -314,6 +339,14 @@ def iniciar_sesion(request: Request, username: str, es_it: bool = False, admin_g
         db.marcar_it(username, es_it)
     except Exception:  # noqa: BLE001 -- el login no debe caer por esto
         pass
+
+
+def iniciar_sesion_portada(request: Request, username: str, grupos) -> None:
+    """Solo para la portada: alguien del realm que no tiene Tareas pero si
+    otras apps. No hay "usuario", asi que Tareas (requiere_login) no le abre."""
+    request.session.clear()
+    request.session["portada_usuario"] = username
+    request.session["grupos"] = normalizar_grupos(grupos)
 
 
 def cerrar_sesion(request: Request) -> None:
