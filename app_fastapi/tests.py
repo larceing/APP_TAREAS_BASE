@@ -709,6 +709,32 @@ class PuedeActuarEnProyectoTests(EntornoAisladoTestCase):
     def test_editor_con_interruptor_on(self):
         self.assertTrue(db.puede_actuar_en_proyecto(self.proyecto_id, self.editor_id, "editores_eliminan_tareas_ajenas"))
 
+    def test_it_puede_aunque_no_sea_miembro(self):
+        """Con Keycloak, IT llega en el login (grupo) y se apunta en auth_user:
+        tiene que poder actuar en espacios de los que no es miembro."""
+        it_id = self._crear_usuario_de_prueba()
+        try:
+            conn = db.connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT username FROM auth_user WHERE id=%s", (it_id,))
+                    username = cur.fetchone()[0]
+            finally:
+                conn.close()
+            self.assertFalse(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+            db.marcar_it(username, True)
+            self.assertTrue(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+            db.marcar_it(username, False)
+            self.assertFalse(db.puede_actuar_en_proyecto(self.proyecto_id, it_id, "editores_crean_columnas"))
+        finally:
+            conn = db.connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM auth_user WHERE id=%s", (it_id,))
+                conn.commit()
+            finally:
+                conn.close()
+
     def test_editor_con_interruptor_off_tarea_ajena(self):
         db.editar_permisos_espacio(self.espacio_id, editores_eliminan_tareas_ajenas=False)
         self.assertFalse(db.puede_actuar_en_proyecto(
