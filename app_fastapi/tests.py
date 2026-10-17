@@ -2274,6 +2274,7 @@ class DespliegueVersionTests(unittest.TestCase):
         with patch.dict("os.environ", {"APP_VERSION": "v9.9.9"}):
             r = TestClient(app, follow_redirects=False).get("/version/")
         self.assertEqual((r.status_code, r.json()), (200, {"version": "v9.9.9"}))
+        self.assertEqual(TestClient(app, follow_redirects=False).head("/version/").status_code, 200)
 
     def test_la_version_se_ve_en_el_login(self):
         with patch.dict("os.environ", {"APP_VERSION": "v9.9.9", "AUTH_MODO": "local"}):
