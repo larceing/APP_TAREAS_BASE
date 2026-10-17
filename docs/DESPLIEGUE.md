@@ -174,6 +174,9 @@ Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
 | Volver atrás | *↩ Volver a la anterior* en la tarjeta del entorno |
 | Poner una versión concreta | Escribirla (o elegirla de la lista) en la tarjeta → *Poner* |
 | Ver si algo falló | *Últimas ejecuciones* → *detalle* |
+| Crear otra aplicación | *Otras aplicaciones → Crear una aplicación* |
+| Versión de otra aplicación | Su fila en *Otras aplicaciones* → *Poner* o *↩* |
+| Dominio propio para una app de PRO | *Llevar una app de PRO a su dominio* |
 
 El panel no despliega por sí mismo: le pide a GitHub que lance el workflow, así
 que todo queda registrado en *Actions* igual que si se hiciera allí. Si PRO no
@@ -261,24 +264,52 @@ Keycloak y la primera vez se da de alta sola la persona en la app.
 
 ## Dominio propio de una app
 
-Cuando la app ya se usa de verdad: un registro `A` más (`tareas`) y un *Proxy
-Host* `tareas.tudominio.com` → `tareas-pro`, puerto `8000`, con las mismas
-opciones. Nada más: la instancia de PRO sigue también en
-`pro.tudominio.com/tareas/` y las versiones nuevas llegan a las dos direcciones
-a la vez. (La app sabe en qué ruta está por la cabecera `X-Forwarded-Prefix`
-que pone la entrada; ver `app_fastapi/ruta_base.py`.)
+Desde el panel: *Otras aplicaciones → Llevar una app de PRO a su dominio*
+(sirve también para esta app). Antes, en el DNS, un registro `A` con ese
+nombre hacia el servidor, **sin proxy**. El servidor (`tareas.sh dominio APP
+DOMINIO`) crea el *Proxy Host* en Nginx Proxy Manager con certificado, añade
+la dirección al cliente de PRO en Keycloak y vuelve a arrancar la app con ella
+(`APP_URL_PUBLICA`). La dirección de antes queda en `APP_URLS_ALTERNATIVAS` y
+sigue funcionando: el login vuelve siempre por donde se entró.
 
-## Sumar otra app a los entornos
+Para que el servidor pueda crear el *Proxy Host*, una vez y en el servidor:
+`./tareas.sh npm-acceso` (pide el email y la contraseña del admin de Nginx
+Proxy Manager; se guardan en `.npm.env`, solo para root).
 
-Cada entorno lee `entrada/<entorno>/apps/<app>.conf` (en la carpeta de
-`tareas.sh`). Para otra app: su contenedor en la red del proxy y un fichero
-como el de `tareas.conf` con su ruta, nombre de contenedor y puerto; luego
-`./tareas.sh portada`. La línea `# app: Nombre` del fichero es la tarjeta que
-sale en la portada del entorno; con `# salud: <camino>` (por defecto `version/`) la portada
-pide `<ruta><camino>` para mostrar si la app está en marcha, y su versión si
-responde JSON con `"version"`. Si la app no responde (aún sin desplegar,
-arrancando), la entrada enseña una página de "no disponible" en vez de un 502. La app tiene que saber vivir bajo una
-ruta (enlaces relativos, o leer `X-Forwarded-Prefix`).
+## Otras apps en los entornos
+
+Desde el panel: *Otras aplicaciones → Crear una aplicación* (nombre, ruta,
+imagen sin versión y puerto). El servidor (`tareas.sh app-nueva`) la deja
+lista en DEV y PRO:
+
+- `apps/<ruta>/<entorno>/` con su `.env` (imagen y versión), su `app.env` y su
+  `docker-compose.yml`; el contenedor se llama `<ruta>-<entorno>` en la red del
+  proxy y guarda lo suyo en el volumen `/datos`.
+- La entrada de cada entorno le manda `/<ruta>/` **quitando el prefijo** (la app
+  vive en `/`; la ruta le llega en `X-Forwarded-Prefix`) y sale su tarjeta en la
+  portada.
+- En Keycloak, el mismo de todo el servidor: clientes `<ruta>-dev` y
+  `<ruta>-pro` y grupos `/DEV/<Ruta>` y `/PRO/<Ruta>` (con `/Admin`). Dar acceso
+  a alguien es meterlo en esos grupos.
+
+La app recibe en su `app.env` lo que necesita para el login: `APP_URL_PUBLICA`,
+`AUTH_MODO=sso`, `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
+`KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_GRUPO_APP` (`DEV/<Ruta>` o `PRO/<Ruta>`) y
+`KEYCLOAK_GRUPO_ADMIN_GLOBAL=IT`. Tiene que responder 200 en el camino de
+comprobación (o en `/`): así sabe el servidor que una versión arranca bien; si
+no, vuelve sola a la anterior.
+
+Versiones: cada fila de la app en el panel tiene *Poner* (una etiqueta de su
+imagen, p. ej. `v1.0.0`) y *↩* (volver a la anterior) para DEV y para PRO. Si la
+imagen es privada en ghcr.io, en el paquete → *Package settings → Manage
+Actions access* hay que dar lectura a este repositorio.
+
+Una app que no se crea así (como Lin-AI) también puede sumarse: un fichero
+`entrada/<entorno>/apps/<app>.conf` como `tareas.conf`, y `./tareas.sh portada`.
+La línea `# app: Nombre` es su tarjeta en la portada; con `# salud: <camino>`
+(por defecto `version/`) la portada pide `<ruta><camino>` para ver si está en
+marcha, y su versión si responde JSON con `"version"`. Si la app no responde,
+la entrada enseña una página de "no disponible" en vez de un 502.
 
 ## Pasar una versión al cliente
 

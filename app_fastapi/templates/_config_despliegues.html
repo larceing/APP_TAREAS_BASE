@@ -110,6 +110,67 @@
   </div>
   {% endif %}
 
+  {% if d.configurado %}
+  {# ── otras aplicaciones (apps.yml) ── #}
+  <div class="config-subsection" style="margin-top:6px;"><label>Otras aplicaciones</label></div>
+  <p class="dsp-texto" style="margin:-4px 0 12px;">Apps que no son esta, en el mismo servidor y con el mismo inicio de sesión (Keycloak). Cada una tiene su ruta en DEV y PRO, sus grupos <code>/DEV/&lt;App&gt;</code> y <code>/PRO/&lt;App&gt;</code> y su tarjeta en la portada.</p>
+
+  {% if d.apps %}
+  <div class="config-table" style="margin-bottom:16px;">
+    {% for a in d.apps %}
+    <div class="config-row" style="flex-wrap:wrap;gap:8px;">
+      <span class="config-name">{{ a.nombre }}</span>
+      <span class="config-meta">/{{ a.ruta }}/ · {{ a.imagen }}</span>
+      {% for e in ["dev", "pro"] %}
+      <form method="post" action="/configuracion/despliegues/apps/desplegar/" style="display:flex;gap:4px;">{{ csrf_field() }}
+        <input type="hidden" name="ruta" value="{{ a.ruta }}"><input type="hidden" name="entorno" value="{{ e }}">
+        <input type="text" name="version" placeholder="versión en {{ nombres[e] }}" required style="width:130px;">
+        <button class="btn-secondary btn-sm" type="submit" onclick="return confirm('¿Poner esa versión de {{ a.nombre }} en {{ nombres[e] }}?')">Poner</button>
+        <button class="btn-secondary btn-sm" type="submit" name="version" value="anterior" formnovalidate title="Volver a la versión buena anterior" onclick="return confirm('¿Volver {{ a.nombre }} en {{ nombres[e] }} a la versión anterior?')">↩</button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px;">
+    <form class="config-form-card" method="post" action="/configuracion/despliegues/apps/nueva/">{{ csrf_field() }}
+      <h3 style="margin:0 0 4px;font-size:15px;">Crear una aplicación</h3>
+      <p class="dsp-texto" style="margin:0 0 12px;">La deja lista en DEV y PRO. Después le pones una versión con «Poner».</p>
+      <div class="form-group"><label>NOMBRE *</label><input type="text" name="nombre" placeholder="Inventario" required maxlength="60"></div>
+      <div class="form-row">
+        <div class="form-group"><label>RUTA *</label><input type="text" name="ruta" placeholder="inventario" required pattern="[a-z][a-z0-9-]{1,30}" title="minúsculas, números y guiones"></div>
+        <div class="form-group" style="flex:0 0 100px;"><label>PUERTO</label><input type="text" name="puerto" value="8000" pattern="[0-9]{2,5}"></div>
+      </div>
+      <div class="form-group"><label>IMAGEN *</label><input type="text" name="imagen" placeholder="ghcr.io/usuario/inventario" required></div>
+      <div class="form-group"><label>COMPROBACIÓN (OPCIONAL)</label><input type="text" name="salud" placeholder="salud  (camino que responde si la app va bien)"></div>
+      <button class="btn-primary" type="submit" onclick="return confirm('¿Crear la aplicación en DEV y PRO?')">Crear</button>
+    </form>
+
+    <form class="config-form-card" method="post" action="/configuracion/despliegues/apps/dominio/">{{ csrf_field() }}
+      <h3 style="margin:0 0 4px;font-size:15px;">Llevar una app de PRO a su dominio</h3>
+      <p class="dsp-texto" style="margin:0 0 12px;">Antes, en tu DNS: un registro con ese nombre hacia la IP del servidor, <b>sin proxy</b> (nube gris). Esto hace el resto: proxy, certificado y login. La dirección de antes sigue funcionando.</p>
+      <div class="form-group"><label>APP</label>
+        <select name="ruta"><option value="tareas">{{ app_nombre() }}</option>{% for a in d.apps %}<option value="{{ a.ruta }}">{{ a.nombre }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>DOMINIO *</label><input type="text" name="dominio" placeholder="inventario.midominio.com" required></div>
+      <button class="btn-primary" type="submit" onclick="return confirm('¿Poner ese dominio a la app de PRO?')">Poner dominio</button>
+    </form>
+  </div>
+
+  <div class="config-subsection"><label>Últimas peticiones</label></div>
+  <div class="config-table" style="margin-bottom:20px;">
+    {% for e in d.ejecuciones_apps %}
+    <div class="config-row">
+      <span class="dsp-estado {{ e.resultado or e.estado }}">{{ {"success": "hecho", "failure": "falló", "cancelled": "cancelada", "in_progress": "en marcha", "queued": "en cola"}.get(e.resultado or e.estado, e.resultado or e.estado) }}</span>
+      <span class="config-name" style="font-size:12.5px">{{ e.titulo }}</span>
+      <span class="config-meta">{{ e.fecha }}</span>
+      <span class="config-actions"><a href="{{ e.url }}" target="_blank" rel="noopener">respuesta</a></span>
+    </div>
+    {% else %}<p class="config-empty">Nada pedido todavía.</p>{% endfor %}
+  </div>
+  {% endif %}
+
   {# ── conexion ── #}
   {% set a = d.ajustes %}
   <form class="config-form-card dsp-conexion" method="post" action="/configuracion/despliegues/ajustes/" style="max-width:640px;">{{ csrf_field() }}

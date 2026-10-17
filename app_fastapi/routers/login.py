@@ -35,7 +35,7 @@ def formulario_login(request: Request, next: str = "/"):
         state = secrets.token_urlsafe(24)
         request.session["sso_state"] = state
         request.session["sso_next"] = _next_seguro(next)
-        return RedirectResponse(url=auth.sso_url_login(state))
+        return RedirectResponse(url=auth.sso_url_login(state, request.headers.get("host", "")))
     return templates.TemplateResponse(request, "login.html", {"error": False, "next": _next_seguro(next)})
 
 
@@ -62,7 +62,7 @@ def volver_de_sso(request: Request, code: str = "", state: str = "", error: str 
     if error or not esperado or not secrets.compare_digest(state, esperado):
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True})
     try:
-        usuario, es_it, id_token = auth.sso_completar(code)
+        usuario, es_it, id_token = auth.sso_completar(code, request.headers.get("host", ""))
     except auth.SinAccesoApp:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True, "sin_acceso": True})
     if not usuario:
@@ -78,5 +78,5 @@ def cerrar_sesion(request: Request):
     id_token = request.session.get("sso_id_token") or ""
     auth.cerrar_sesion(request)
     if config.auth_modo() == "sso":
-        return RedirectResponse(url=auth.sso_url_logout(id_token))
+        return RedirectResponse(url=auth.sso_url_logout(id_token, request.headers.get("host", "")))
     return RedirectResponse(url="/login/")
