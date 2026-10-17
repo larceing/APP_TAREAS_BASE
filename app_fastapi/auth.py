@@ -212,13 +212,13 @@ def sso_completar(code: str, host: str = ""):
     return usuario, es_it, admin_global, (id_token if isinstance(id_token, str) else "")
 
 
-def sso_url_logout(id_token: str = "", host: str = "") -> str:
+def sso_url_logout(id_token: str = "", host: str = "", salida: str = "") -> str:
     """Cierra tambien la sesion de Keycloak (si no, la siguiente visita entraria
     sola) y vuelve a SSO_URL_SALIDA (la portada) o a la propia app. Con el
     id_token del login (id_token_hint) Keycloak cierra sin preguntar."""
     from urllib.parse import urlencode
     issuer = os.getenv("KEYCLOAK_ISSUER", "")
-    salida = os.getenv("SSO_URL_SALIDA", "").strip() or url_publica(host) + "/"
+    salida = salida or os.getenv("SSO_URL_SALIDA", "").strip() or url_publica(host) + "/"
     params = {"client_id": os.getenv("KEYCLOAK_CLIENT_ID", ""), "post_logout_redirect_uri": salida}
     if id_token:
         params["id_token_hint"] = id_token

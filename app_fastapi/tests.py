@@ -25,6 +25,7 @@ from starlette.testclient import TestClient
 from . import auth, csrf, db
 from .main import app
 from .routers import nexus
+from .routers import despliegues as _rdesp
 
 TEST_PREFIX = "AUTOTEST_"
 
@@ -2336,13 +2337,14 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         despliegues.USAR_BD_REAL = False
         self.d.guardar_ajustes({"repo": "https://github.com/alguien/app.git", "token": "secreto-123",
                                 "url_pro": "https://pro.test"})
-        for dep in (auth.requiere_admin_global, auth.requiere_login):
+        for dep in (auth.requiere_admin_global, auth.requiere_login, _rdesp._usuario):
             app.dependency_overrides[dep] = lambda: "test-user"
+        app.dependency_overrides[_rdesp._es_admin] = lambda: True
         app.dependency_overrides[csrf.proteger] = lambda: None
         self.client = TestClient(app, follow_redirects=False)
 
     def tearDown(self):
-        for dep in (auth.requiere_admin_global, auth.requiere_login, csrf.proteger):
+        for dep in (auth.requiere_admin_global, auth.requiere_login, csrf.proteger, _rdesp._usuario, _rdesp._es_admin):
             app.dependency_overrides.pop(dep, None)
         conn = db.connect()
         try:
@@ -2396,21 +2398,21 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
     @patch("app_fastapi.despliegues.aprobar_en_segundo_plano")
     @patch("app_fastapi.despliegues.crear_version", return_value="v1.0.2")
     def test_boton_pasar_a_pro(self, crear, aprobar):
-        self.client.post("/servidor/nueva-version/", data={"tipo": "patch", "a_pro": "1"})
+        self.client.post("/ajustes/nueva-version/", data={"tipo": "patch", "a_pro": "1"})
         aprobar.assert_called_once_with("v1.0.2")
         aprobar.reset_mock()
-        self.client.post("/servidor/nueva-version/", data={"tipo": "patch"})
+        self.client.post("/ajustes/nueva-version/", data={"tipo": "patch"})
         aprobar.assert_not_called()
 
     @patch("app_fastapi.despliegues.requests.request")
     def test_desplegar_y_rollback_lanzan_el_workflow(self, mock):
         mock.return_value = _respuesta(204)
-        r = self.client.post("/servidor/poner/", data={"entorno": "pro", "version": "anterior"})
+        r = self.client.post("/ajustes/poner/", data={"entorno": "pro", "version": "anterior"})
         self.assertEqual(r.status_code, 303)
         self.assertTrue(mock.call_args.args[1].endswith("/actions/workflows/despliegue.yml/dispatches"))
         self.assertEqual(mock.call_args.kwargs["json"], {"ref": "main", "inputs": {"entorno": "pro", "version": "anterior"}})
         mock.reset_mock()
-        self.client.post("/servidor/poner/", data={"entorno": "pro", "version": "v1; rm -rf /"})
+        self.client.post("/ajustes/poner/", data={"entorno": "pro", "version": "v1; rm -rf /"})
         mock.assert_not_called()
 
     @patch("app_fastapi.despliegues.requests.get")
@@ -2422,26 +2424,26 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         pendientes = [{"environment": {"id": 55, "name": "pro"}, "current_user_can_approve": True}]
         mock.side_effect = [_respuesta(200, [{"tag_name": "v1.4.0"}]), _respuesta(200, runs), _respuesta(200, pendientes),
                             _respuesta(200, {"workflow_runs": []})]
-        html = self.client.get("/servidor/").text
+        html = self.client.get("/ajustes/").text
         self.assertIn("espera aprobación para <b>PRO</b>", html)
         self.assertIn("v1.3.0", html)
         mock.side_effect = None
         mock.return_value = _respuesta(204)
-        self.client.post("/servidor/revisar/", data={"run_id": "7", "entorno_id": "55", "decision": "aprobar"})
+        self.client.post("/ajustes/revisar/", data={"run_id": "7", "entorno_id": "55", "decision": "aprobar"})
         self.assertEqual(mock.call_args.kwargs["json"]["state"], "approved")
         self.assertEqual(mock.call_args.kwargs["json"]["environment_ids"], [55])
 
     @patch("app_fastapi.despliegues.requests.request")
     def test_error_de_github_no_rompe_el_panel(self, mock):
         mock.return_value = _respuesta(401, {"message": "Bad credentials"})
-        r = self.client.get("/servidor/")
+        r = self.client.get("/ajustes/")
         self.assertEqual(r.status_code, 200)
         self.assertIn("GitHub no acepta el token", r.text)
 
     @patch("app_fastapi.despliegues.requests.request")
     def test_preparar_entornos_pone_aprobacion_en_pro(self, mock):
         mock.side_effect = [_respuesta(200, {"id": 42})] + [_respuesta(200, {})] * 2
-        self.client.post("/servidor/preparar-github/")
+        self.client.post("/ajustes/preparar-github/")
         llamadas = [(c.args[1], c.kwargs.get("json")) for c in mock.call_args_list]
         self.assertEqual(llamadas[0][0], "https://api.github.com/user")
         self.assertEqual(llamadas[2], ("https://api.github.com/repos/alguien/app/environments/pro",
@@ -2451,7 +2453,7 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
     @patch("app_fastapi.despliegues.requests.request")
     def test_crear_app_lanza_apps_yml_y_la_recuerda(self, mock):
         mock.return_value = _respuesta(204)
-        self.client.post("/servidor/apps/nueva/", data={
+        self.client.post("/ajustes/apps/nueva/", data={
             "nombre": "Inventario", "ruta": "inventario", "imagen": "ghcr.io/Alguien/Inventario", "puerto": "8080", "salud": "/salud"})
         self.assertTrue(mock.call_args.args[1].endswith("/actions/workflows/apps.yml/dispatches"))
         self.assertEqual(mock.call_args.kwargs["json"]["inputs"], {
@@ -2459,11 +2461,11 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
             "puerto": "8080", "salud": "salud"})
         self.assertEqual([a["ruta"] for a in self.d.apps()], ["inventario"])
         # poner una version y volver atras
-        self.client.post("/servidor/poner/", data={"ruta": "inventario", "entorno": "pro", "version": "anterior"})
+        self.client.post("/ajustes/poner/", data={"ruta": "inventario", "entorno": "pro", "version": "anterior"})
         self.assertEqual(mock.call_args.kwargs["json"]["inputs"],
                          {"accion": "desplegar", "app": "inventario", "entorno": "pro", "version": "anterior"})
         # dominio propio (tambien para esta app)
-        self.client.post("/servidor/apps/dominio/", data={"ruta": "tareas", "dominio": "https://Tareas.Ejemplo.com/"})
+        self.client.post("/ajustes/apps/dominio/", data={"ruta": "tareas", "dominio": "https://Tareas.Ejemplo.com/"})
         self.assertEqual(mock.call_args.kwargs["json"]["inputs"], {"accion": "dominio", "app": "tareas", "dominio": "tareas.ejemplo.com"})
 
     @patch("app_fastapi.despliegues.requests.request")
@@ -2478,7 +2480,7 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
             ("/apps/dominio/", {"ruta": "tareas", "dominio": "no es dominio"}),
         ]
         for ruta, datos in malos:
-            self.client.post("/servidor" + ruta, data=datos)
+            self.client.post("/ajustes" + ruta, data=datos)
         mock.assert_not_called()
 
     _LINAI = {"nombre": "Lin-AI", "ruta": "linai", "repo": "https://github.com/otra/proyecto", "workflow": "linai.yml",
@@ -2487,23 +2489,23 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
     def test_app_de_otro_repo_lanza_su_workflow(self):
         with patch("app_fastapi.despliegues.requests.request") as mock:
             mock.return_value = _respuesta(204)
-            self.client.post("/servidor/externas/guardar/", data=self._LINAI)
+            self.client.post("/ajustes/externas/guardar/", data=self._LINAI)
             self.assertEqual([x["ruta"] for x in self.d.catalogo()], ["tareas", "linai"])
-            self.client.post("/servidor/poner/", data={"ruta": "linai", "entorno": "dev", "version": "sha-1a2b3c4"})
+            self.client.post("/ajustes/poner/", data={"ruta": "linai", "entorno": "dev", "version": "sha-1a2b3c4"})
             self.assertEqual(mock.call_args.args[1], "https://api.github.com/repos/otra/proyecto/actions/workflows/linai.yml/dispatches")
             self.assertEqual(mock.call_args.kwargs["json"], {"ref": "main", "inputs": {"environment": "dev", "tag": "sha-1a2b3c4"}})
             # sin «anterior» marcado, no se pide
             mock.reset_mock()
-            self.client.post("/servidor/poner/", data={"ruta": "linai", "entorno": "pro", "version": "anterior"})
+            self.client.post("/ajustes/poner/", data={"ruta": "linai", "entorno": "pro", "version": "anterior"})
             mock.assert_not_called()
             # quitarla del panel
-            self.client.post("/servidor/externas/quitar/", data={"ruta": "linai"})
+            self.client.post("/ajustes/externas/quitar/", data={"ruta": "linai"})
             self.assertEqual([x["ruta"] for x in self.d.catalogo()], ["tareas"])
 
     def test_app_de_otro_repo_con_datos_raros_no_se_guarda(self):
         for cambio in ({"ruta": "tareas"}, {"repo": "no es repo"}, {"workflow": "x; rm"}, {"campo_version": "environment"},
                        {"salud": "a b"}):
-            self.client.post("/servidor/externas/guardar/", data={**self._LINAI, **cambio})
+            self.client.post("/ajustes/externas/guardar/", data={**self._LINAI, **cambio})
         self.assertEqual(self.d.externas(), [])
 
     @patch("app_fastapi.despliegues.threading.Thread")
@@ -2514,14 +2516,14 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
         self.d.guardar_ajustes({"repo": "alguien/app", "url_dev": "https://dev.test/tareas"})
         self.d.externa_guardar(self._LINAI)
         mock_get.return_value = _respuesta(200, {"version": "sha-9f8e7d6"})
-        self.client.post("/servidor/pasar-a-pro/", data={"ruta": "linai"})
+        self.client.post("/ajustes/pasar-a-pro/", data={"ruta": "linai"})
         self.assertEqual(mock_get.call_args.args[0], "https://dev.test/linai/api/version")
         self.assertEqual(mock.call_args.kwargs["json"]["inputs"], {"environment": "pro", "tag": "sha-9f8e7d6"})
         hilo.assert_called_once()  # y se queda esperando para aprobarla
         # si DEV no dice su version, no se pide nada
         mock.reset_mock()
         mock_get.return_value = _respuesta(200, {})
-        self.client.post("/servidor/pasar-a-pro/", data={"ruta": "linai"})
+        self.client.post("/ajustes/pasar-a-pro/", data={"ruta": "linai"})
         mock.assert_not_called()
 
     @patch("app_fastapi.despliegues.requests.request")
@@ -2539,7 +2541,7 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
 
     def test_revisar_solo_repos_del_panel(self):
         with patch("app_fastapi.despliegues.requests.request") as mock:
-            self.client.post("/servidor/revisar/", data={"run_id": "1", "entorno_id": "2", "decision": "aprobar", "repo": "ajeno/repo"})
+            self.client.post("/ajustes/revisar/", data={"run_id": "1", "entorno_id": "2", "decision": "aprobar", "repo": "ajeno/repo"})
             mock.assert_not_called()
 
     @patch("app_fastapi.despliegues.requests.get")
@@ -2551,7 +2553,7 @@ class DespliegueGitHubTests(EntornoAisladoTestCase):
                                                                                    + "-" + url.split("/")[3]})
         mock.side_effect = [_respuesta(200, []), _respuesta(200, {"workflow_runs": []}), _respuesta(200, {"workflow_runs": []}),
                             _respuesta(200, {"workflow_runs": []})]
-        html = self.client.get("/servidor/").text
+        html = self.client.get("/ajustes/").text
         self.assertIn("<h2>Lin-AI</h2>", html)
         self.assertIn("v-pro.test-linai", html)
         self.assertIn("v-dev.test-tareas", html)
@@ -2627,19 +2629,55 @@ class ServidorAccesoTests(unittest.TestCase):
         with patch.dict("os.environ", {"KEYCLOAK_GRUPO_APP": "Tareas"}):
             self.assertFalse(auth.es_admin_global_sesion(self._req(usuario="a", es_it=True)))
 
+    def test_entrar_y_salir_vuelven_a_la_portada(self):
+        client = TestClient(app, follow_redirects=False)
+        with patch.dict("os.environ", {"APP_URL_PORTAL": ""}):
+            r = client.get("/portada/", headers={"Host": "dev.ejemplo.com", "X-Forwarded-Proto": "https"})
+        self.assertEqual(r.headers["location"], "https://dev.ejemplo.com/")
+        with patch.dict("os.environ", {"APP_URL_PORTAL": "https://apps.ejemplo.com/"}):
+            self.assertEqual(client.get("/portada/").headers["location"], "https://apps.ejemplo.com/")
+        with patch.dict("os.environ", {"AUTH_MODO": "local"}):
+            self.assertEqual(client.get("/logout/?a=portada").headers["location"], "/portada/")
+            self.assertEqual(client.get("/logout/").headers["location"], "/login/")
+        with patch.dict("os.environ", dict(_KEYCLOAK_ENV, AUTH_MODO="sso", APP_URL_PUBLICA="https://dev.ejemplo.com/tareas")):
+            r = client.get("/logout/?a=portada", headers={"Host": "dev.ejemplo.com"})
+        self.assertIn("post_logout_redirect_uri=https%3A%2F%2Fdev.ejemplo.com%2Ftareas%2Fportada%2F", r.headers["location"])
+
     def test_la_portada_pregunta_sin_login_y_la_pagina_no_abre(self):
         client = TestClient(app, follow_redirects=False)
-        r = client.get("/servidor/acceso/")
+        r = client.get("/ajustes/acceso/")
         self.assertEqual((r.status_code, r.json()), (200, {"usuario": None, "admin": False}))
-        self.assertIn(client.get("/servidor/").status_code, (302, 303, 307))
-        app.dependency_overrides[auth.requiere_login] = lambda: "test-user"
+        # la portada de antes pregunta aun en /tareas/servidor/acceso/
+        self.assertEqual(client.get("/servidor/acceso/").json(), {"usuario": None, "admin": False})
+        # sin sesion: al login de Tareas (la entrada dice donde esta) y de vuelta aqui
+        r = client.get("/ajustes/", headers={"X-Ruta-App": "/tareas"})
+        self.assertEqual(r.headers["location"], "/tareas/login/?next=/ajustes/")
+
+    def test_ajustes_va_en_la_raiz_del_dominio_y_sin_nada_de_tareas(self):
+        client = TestClient(app, follow_redirects=False)
+        cab = {"Host": "pro.ejemplo.com", "X-Forwarded-Proto": "https"}
+        # por /tareas/ajustes/ (vuelta del login) o la direccion vieja: a la buena
+        r = client.get("/tareas/ajustes/", headers=dict(cab, **{"X-Forwarded-Prefix": "/tareas"}))
+        self.assertEqual(r.headers["location"], "https://pro.ejemplo.com/ajustes/")
+        r = client.get("/tareas/servidor/", headers=dict(cab, **{"X-Forwarded-Prefix": "/tareas"}))
+        self.assertEqual(r.headers["location"], "https://pro.ejemplo.com/ajustes/")
+        app.dependency_overrides[_rdesp._usuario] = lambda: "ana"
         try:
-            with patch("app_fastapi.auth.es_admin_global_sesion", return_value=False):
-                r = client.get("/servidor/")
-            self.assertIn(r.status_code, (302, 303, 307))
-            self.assertNotIn("servidor", r.headers.get("location", ""))
+            app.dependency_overrides[_rdesp._es_admin] = lambda: True
+            with patch("app_fastapi.despliegues.panel", return_value={"tarjetas": [], "configurado": False, "ajustes": {}, "error": ""}):
+                r = client.get("/ajustes/", headers=dict(cab, **{"X-Ruta-App": "/tareas"}))
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("<title>Ajustes del servidor</title>", r.text)
+            self.assertIn('href="/tareas/logout/?a=portada"', r.text)
+            self.assertIn('action="/ajustes/github/"', r.text)
+            self.assertNotIn("sidebar", r.text)
+            app.dependency_overrides[_rdesp._es_admin] = lambda: False
+            r = client.get("/ajustes/", headers=dict(cab, **{"X-Ruta-App": "/tareas"}))
+            self.assertEqual(r.status_code, 403)
+            self.assertIn("solo para IT", r.text)
         finally:
-            app.dependency_overrides.pop(auth.requiere_login, None)
+            app.dependency_overrides.pop(_rdesp._usuario, None)
+            app.dependency_overrides.pop(_rdesp._es_admin, None)
 
 
 # ── ruta_base.py: servir la app bajo /tareas ────────────────────────────────
@@ -2695,6 +2733,11 @@ class RutaBaseTests(unittest.TestCase):
         self.assertEqual(self.client.get("/tareas/ruta/").json(), {"path": "/ruta/"})
         r = self.client.get("/tareas", follow_redirects=False)
         self.assertEqual((r.status_code, r.headers["location"]), (308, "/tareas/"))
+
+    def test_ajustes_en_la_raiz_pasa_sin_prefijo(self):
+        r = self.client.get("/ajustes/x/", follow_redirects=False)
+        self.assertEqual(r.status_code, 404)   # llega tal cual a la app (el mini no la tiene)
+        self.assertNotIn("location", r.headers)
 
     def test_ruta_por_cabecera_del_proxy(self):
         from . import ruta_base

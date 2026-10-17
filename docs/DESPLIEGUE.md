@@ -144,8 +144,9 @@ en marcha. Entra con `admin` y la contraseña de
 
 ### 6. Panel de despliegues
 
-En DEV (y luego en PRO, que se rellena igual) → portada → *⚙ Ajustes →
-Conexión con GitHub* (o `https://dev.tudominio.com/tareas/servidor/`):
+Portada → *⚙ Ajustes → Conexión con GitHub* (`https://pro.tudominio.com/ajustes/`).
+Se rellena **una sola vez, en PRO**: ese panel lleva DEV y PRO de todas las
+apps, y el botón Ajustes de la portada de DEV también abre el de PRO:
 
 - **Repositorio**: `usuario/nombre`.
 - **Token**: en GitHub, tu foto → *Settings → Developer settings → Personal access
@@ -169,13 +170,19 @@ Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
 
 ## Panel de despliegues
 
-*Ajustes del servidor*: el botón **⚙ Ajustes** de la portada de cada entorno,
-que abre `/tareas/servidor/` (módulo `MODULO_DESPLIEGUES=1`, que `preparar`
-deja activo en DEV y PRO). Solo para el grupo global de IT
-(`KEYCLOAK_GRUPO_ADMIN_GLOBAL`, por defecto `IT`; en modo local, `is_staff`):
-el Admin de una sola app (`/Tareas/Admin`) no ve el botón y la página no le
-abre. La portada es estática y pregunta a `/tareas/servidor/acceso/` si quien
-mira es IT; la página lo vuelve a comprobar en el servidor.
+*Ajustes del servidor*: el botón **⚙ Ajustes** de la portada, que abre
+`https://pro.tudominio.com/ajustes/`, en la raíz del dominio y no dentro de
+`/tareas/`: es del servidor, no de Tareas, y la página no lleva ni su menú ni
+su nombre. La sirve Tareas (módulo `MODULO_DESPLIEGUES=1`, que `preparar` deja
+activo en DEV y PRO) porque la entrada de cada entorno le manda `/ajustes/` tal
+cual, sin `X-Forwarded-Prefix` y con `X-Ruta-App: /tareas` para saber dónde
+mandar a entrar y a salir. Hay uno solo, el de PRO (también desde la portada
+de DEV; `PORTADA_URL` en `pro/.env` si `tareas.sh` no adivina su dirección).
+Solo para el grupo global de IT (`KEYCLOAK_GRUPO_ADMIN_GLOBAL`, por defecto
+`IT`; en modo local, `is_staff`): el Admin de una sola app (`/Tareas/Admin`) no
+ve el botón y la página no le abre. La portada es estática y pregunta a
+`/ajustes/acceso/` quién ha entrado y si es IT; la página lo vuelve a comprobar
+en el servidor. **Entrar** y **Salir** de la portada vuelven a la portada.
 
 Hay una tarjeta por app del servidor:
 

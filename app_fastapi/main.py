@@ -148,6 +148,7 @@ if config.modulo_activo("conectores"):
 if config.modulo_activo("despliegues"):
     from .routers import despliegues
     app.include_router(despliegues.router)
+    app.include_router(despliegues.antiguo)
 
 
 @app.api_route("/version/", methods=["GET", "HEAD"])

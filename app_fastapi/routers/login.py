@@ -74,9 +74,27 @@ def volver_de_sso(request: Request, code: str = "", state: str = "", error: str 
 
 
 @router.get("/logout/")
-def cerrar_sesion(request: Request):
+def cerrar_sesion(request: Request, a: str = ""):
+    """a=portada (el boton Salir de la portada): al acabar vuelve a la
+    portada en vez de a esta app."""
     id_token = request.session.get("sso_id_token") or ""
+    host = request.headers.get("host", "")
     auth.cerrar_sesion(request)
     if config.auth_modo() == "sso":
-        return RedirectResponse(url=auth.sso_url_logout(id_token, request.headers.get("host", "")))
-    return RedirectResponse(url="/login/")
+        # Keycloak solo vuelve a direcciones de esta app (URL/*): pasa por /portada/
+        salida = auth.url_publica(host) + "/portada/" if a == "portada" and auth.url_publica(host) else ""
+        return RedirectResponse(url=auth.sso_url_logout(id_token, host, salida))
+    return RedirectResponse(url="/portada/" if a == "portada" else "/login/")
+
+
+@router.get("/portada/")
+def a_la_portada(request: Request):
+    """Sin login: manda a la portada del entorno (APP_URL_PORTAL, o la raiz
+    del dominio por el que se ha entrado). La usan Entrar y Salir de la
+    portada para volver alli, no a esta app."""
+    destino = config.app_url_portal()
+    if not destino:
+        proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+        host = request.headers.get("host", "")
+        destino = f"{proto}://{host}/" if host else "/"
+    return RedirectResponse(url=destino, status_code=303)
