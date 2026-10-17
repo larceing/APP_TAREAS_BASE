@@ -24,9 +24,11 @@ def _volver() -> RedirectResponse:
 
 @router.get("/acceso/")
 def acceso(request: Request):
-    """Para la portada (pagina estatica): enseña el boton Ajustes solo si la
-    persona que la mira es IT global. Sin sesion responde false, sin login."""
-    return JSONResponse({"admin": auth.es_admin_global_sesion(request)}, headers={"Cache-Control": "no-store"})
+    """Para la portada (pagina estatica): quien la mira (para "Salir" y
+    cambiar de usuario) y si es IT global (boton Ajustes). Sin sesion:
+    usuario null y admin false, sin pedir login."""
+    return JSONResponse({"usuario": request.session.get("usuario") or None,
+                         "admin": auth.es_admin_global_sesion(request)}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/", dependencies=_solo_it)

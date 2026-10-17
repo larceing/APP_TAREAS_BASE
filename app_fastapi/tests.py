@@ -2583,7 +2583,7 @@ class ServidorAccesoTests(unittest.TestCase):
     def test_la_portada_pregunta_sin_login_y_la_pagina_no_abre(self):
         client = TestClient(app, follow_redirects=False)
         r = client.get("/servidor/acceso/")
-        self.assertEqual((r.status_code, r.json()), (200, {"admin": False}))
+        self.assertEqual((r.status_code, r.json()), (200, {"usuario": None, "admin": False}))
         self.assertIn(client.get("/servidor/").status_code, (302, 303, 307))
         app.dependency_overrides[auth.requiere_login] = lambda: "test-user"
         try:

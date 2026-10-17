@@ -10,6 +10,10 @@ En Ajustes hay **una tarjeta por aplicación** (Tareas, las creadas desde aquí 
 las que tienen su propio repositorio), cada una con su versión en DEV y en PRO
 y los mismos botones.
 
+Si no ves **⚙ Ajustes** siendo de IT, pulsa **Salir** (arriba a la derecha de
+la portada, junto a tu usuario) y vuelve a entrar: la sesión de antes no sabía
+aún que eres IT. **Salir** también sirve para entrar con otro usuario.
+
 ## Lo que tienes que saber
 
 - **DEV** es para probar. Cada cambio que se guarda en el código llega solo a

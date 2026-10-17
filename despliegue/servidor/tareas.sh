@@ -237,6 +237,10 @@ footer{text-align:center;color:var(--suave);font-size:13px;padding:24px}
 .ajustes{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;border:1px solid var(--borde);background:var(--tarjeta);color:inherit;text-decoration:none;font-weight:600;font-size:14px}
 .ajustes:hover{border-color:var(--acento)}
 .ajustes[hidden]{display:none}
+.sesion{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--suave)}
+.sesion[hidden]{display:none}
+.sesion .ajustes{margin-left:0}
+.sesion a.salir{color:var(--acento);text-decoration:none;font-weight:600}
 CSS
 }
 
@@ -256,11 +260,12 @@ escribir_portada() {
     lista+="<a class=\"app\" href=\"$ruta\" data-salud=\"$ruta${salud#/}\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
   done
   [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
-  # Ajustes del servidor (panel de Tareas, /tareas/servidor/): oculto hasta
-  # que Tareas dice que quien mira es IT global; la pagina lo vuelve a mirar
+  # Arriba a la derecha (lo pregunta a Tareas, /tareas/servidor/acceso/):
+  # quien ha entrado y "Salir" para cambiar de usuario, y Ajustes del servidor
+  # solo si es IT global (la pagina lo vuelve a comprobar)
   local ajustes=""
   [[ -f "$DIR/entrada/$ent/apps/tareas.conf" ]] && \
-    ajustes='<a class="ajustes" id="ajustes" href="/tareas/servidor/" hidden>⚙ Ajustes</a>'
+    ajustes='<div class="sesion" id="sesion" hidden><span id="quien"></span><a class="salir" id="salir" href="/tareas/login/">Entrar</a><a class="ajustes" id="ajustes" href="/tareas/servidor/" hidden>⚙ Ajustes</a></div>'
   case $ent in
     pro) titulo=Producción; sub="Las aplicaciones en uso. Entra con tu usuario de siempre." ;;
     dev) titulo=Pruebas; sub="Versiones en pruebas: los datos de aquí no son los reales." ;;
@@ -288,11 +293,20 @@ document.querySelectorAll(".app[data-salud]").forEach(function (a) {
     })
     .catch(function () { txt.textContent = "Sin desplegar o arrancando"; });
 });
-var ajustes = document.getElementById("ajustes");
-if (ajustes) {
+var sesion = document.getElementById("sesion");
+if (sesion) {
   fetch("/tareas/servidor/acceso/", { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" } })
-    .then(function (r) { return r.ok ? r.json() : {}; })
-    .then(function (d) { if (d && d.admin === true) ajustes.hidden = false; })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d) return;
+      if (d.usuario) {
+        document.getElementById("quien").textContent = d.usuario;
+        var salir = document.getElementById("salir");
+        salir.textContent = "Salir"; salir.href = "/tareas/logout/"; salir.title = "Cerrar sesión para entrar con otro usuario";
+      }
+      if (d.admin === true) document.getElementById("ajustes").hidden = false;
+      sesion.hidden = false;
+    })
     .catch(function () {});
 }
 </script>
