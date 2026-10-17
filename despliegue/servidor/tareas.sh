@@ -234,6 +234,9 @@ footer{text-align:center;color:var(--suave);font-size:13px;padding:24px}
 .boton{display:inline-block;margin-top:24px;padding:10px 18px;border-radius:10px;background:var(--acento);color:#fff;text-decoration:none;font-weight:600}
 .aviso{max-width:520px;margin:12vh auto 0;text-align:center}
 .aviso .ico{margin:0 auto 20px;width:56px;height:56px;font-size:26px}
+.ajustes{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;border:1px solid var(--borde);background:var(--tarjeta);color:inherit;text-decoration:none;font-weight:600;font-size:14px}
+.ajustes:hover{border-color:var(--acento)}
+.ajustes[hidden]{display:none}
 CSS
 }
 
@@ -253,6 +256,11 @@ escribir_portada() {
     lista+="<a class=\"app\" href=\"$ruta\" data-salud=\"$ruta${salud#/}\"><span class=\"ico\">${nombre:0:1}</span><span><div class=\"nom\">$nombre</div><div class=\"est\"><span class=\"punto\"></span><span class=\"txt\">Comprobando...</span></div></span></a>"
   done
   [[ -n "$lista" ]] || lista='<p class="vacio">Todavía no hay aplicaciones en este entorno.</p>'
+  # Ajustes del servidor (panel de Tareas, /tareas/servidor/): oculto hasta
+  # que Tareas dice que quien mira es IT global; la pagina lo vuelve a mirar
+  local ajustes=""
+  [[ -f "$DIR/entrada/$ent/apps/tareas.conf" ]] && \
+    ajustes='<a class="ajustes" id="ajustes" href="/tareas/servidor/" hidden>⚙ Ajustes</a>'
   case $ent in
     pro) titulo=Producción; sub="Las aplicaciones en uso. Entra con tu usuario de siempre." ;;
     dev) titulo=Pruebas; sub="Versiones en pruebas: los datos de aquí no son los reales." ;;
@@ -264,7 +272,7 @@ escribir_portada() {
 <title>$titulo · ${ent^^}</title>
 <style>$css</style>
 <main>
-  <div class="cab"><h1>$titulo</h1><span class="chip $ent">${ent^^}</span></div>
+  <div class="cab"><h1>$titulo</h1><span class="chip $ent">${ent^^}</span>$ajustes</div>
   <p class="sub">$sub</p>
   <div class="apps">$lista</div>
 </main>
@@ -280,6 +288,13 @@ document.querySelectorAll(".app[data-salud]").forEach(function (a) {
     })
     .catch(function () { txt.textContent = "Sin desplegar o arrancando"; });
 });
+var ajustes = document.getElementById("ajustes");
+if (ajustes) {
+  fetch("/tareas/servidor/acceso/", { cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" } })
+    .then(function (r) { return r.ok ? r.json() : {}; })
+    .then(function (d) { if (d && d.admin === true) ajustes.hidden = false; })
+    .catch(function () {});
+}
 </script>
 </html>
 HTML
@@ -489,6 +504,10 @@ cmd_desplegar() {
     [[ -f "$DIR/$ent/docker-compose.yml" ]] || { docker rm "$cid" >/dev/null; die "la imagen no trae despliegue/servidor/docker-compose.yml"; }
     cp "$DIR/$ent/docker-compose.yml" "$nuevo"
   fi
+  # PRO trae tambien la version aprobada de este script (ver al final)
+  local script_nuevo="$DIR/tareas.sh.nuevo"
+  rm -f "$script_nuevo"
+  [[ "$ent" == pro ]] && docker cp "$cid:/app/despliegue/servidor/tareas.sh" "$script_nuevo" 2>/dev/null || true
   docker rm "$cid" >/dev/null
 
   if [[ "$ent" != dev && -n "$anterior" ]]; then
@@ -505,6 +524,7 @@ cmd_desplegar() {
     printf '%s\t%s\tok\t%s\n' "$(ahora)" "$version" "$origen" >> "$DIR/$ent/historial.log"
     log "$ent ya está en $version"
     limpiar_imagenes "$imagen"
+    actualizar_script "$script_nuevo"
     return 0
   fi
 
@@ -524,6 +544,24 @@ cmd_desplegar() {
     fi
   fi
   exit 1
+}
+
+# Con cada version que llega a PRO, el servidor se queda con su tareas.sh
+# (mv: el que esta corriendo sigue leyendo el suyo) y rehace la portada con
+# el. Solo PRO: lo que esta en DEV aun no esta aprobado.
+actualizar_script() {
+  local nuevo=$1 propio="$DIR/tareas.sh"
+  [[ -s "$nuevo" ]] || return 0
+  if cmp -s "$nuevo" "$propio"; then rm -f "$nuevo"; return 0; fi
+  if ! bash -n "$nuevo" 2>/dev/null; then
+    log "el tareas.sh de esta versión no pasa bash -n: sigo con el de antes"
+    rm -f "$nuevo"; return 0
+  fi
+  [[ -f "$propio" ]] && cp -p "$propio" "$propio.anterior"
+  chmod 700 "$nuevo"
+  mv -f "$nuevo" "$propio"
+  log "tareas.sh actualizado con el de esta versión (el de antes: tareas.sh.anterior)"
+  bash "$propio" portada >/dev/null 2>&1 || log "aviso: no se pudo rehacer la portada (tareas.sh portada)"
 }
 
 # version buena anterior a la actual: la ultima desplegada con exito que no

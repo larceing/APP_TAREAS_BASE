@@ -31,10 +31,10 @@ además hay un cliente con su propia instalación, se le lleva esa misma versió
 
 Si una versión no arranca, el servidor vuelve solo a la que había.
 
-Todo esto se maneja **sin terminal** desde la propia app: *Configuración →
-Despliegues* (en DEV y PRO) enseña qué versión tiene cada entorno y tiene
-botones para sacar una versión nueva, ponerla en un entorno, volver a la
-anterior y aprobar el paso a PRO. Ver [Panel de despliegues](#panel-de-despliegues).
+Todo esto se maneja **sin terminal** desde el botón **⚙ Ajustes** de la
+portada de DEV y de PRO (solo IT global): una tarjeta por app del servidor con
+su versión en cada entorno y botones para pasar a PRO, poner una versión,
+volver a la anterior y aprobar. Ver [Panel de despliegues](#panel-de-despliegues).
 
 ## Qué hay en el repositorio
 
@@ -144,41 +144,63 @@ en marcha. Entra con `admin` y la contraseña de
 
 ### 6. Panel de despliegues
 
-En DEV (y luego en PRO, que se rellena igual) → *Configuración → Despliegues →
-Conexión con GitHub*:
+En DEV (y luego en PRO, que se rellena igual) → portada → *⚙ Ajustes →
+Conexión con GitHub* (o `https://dev.tudominio.com/tareas/servidor/`):
 
 - **Repositorio**: `usuario/nombre`.
 - **Token**: en GitHub, tu foto → *Settings → Developer settings → Personal access
-  tokens → Fine-grained tokens → Generate new token*. *Repository access*: solo
-  este repositorio. *Permissions → Repository*: **Actions**, **Contents** y
+  tokens → Fine-grained tokens → Generate new token*. *Repository access*: este
+  repositorio y el de cada app que tenga su propio workflow (las de *Añadir una
+  app que ya existe*). *Permissions → Repository*: **Actions**, **Contents** y
   **Deployments** en *Read and write*. Solo si quieres que el panel cree los
   entornos (*Crear los entornos en GitHub*) hace falta además
   **Administration**, y conviene quitársela justo después: deja cambiar los
   ajustes del repositorio y el token vive en la app.
   Se pega en el panel y se guarda cifrado; no se vuelve a enseñar.
-- **Direcciones** de DEV y PRO: `https://dev.tudominio.com/tareas` y
+- **Direcciones** de Tareas en DEV y PRO: `https://dev.tudominio.com/tareas` y
   `https://pro.tudominio.com/tareas` (o su dominio propio, si ya lo tiene).
+- **Portada** de DEV y PRO: vacía si es el mismo dominio que la dirección de
+  Tareas (`https://dev.tudominio.com`); si Tareas tiene ya su dominio propio,
+  la de la portada. Ahí pregunta el panel la versión de las demás apps
+  (`<portada>/<ruta>/version/`).
 
 Guarda, pulsa *Crear los entornos en GitHub* y saca la primera versión con
 *Pasar a PRO* (será la `v1.0.0`).
 
 ## Panel de despliegues
 
-*Configuración → Despliegues* (solo IT, módulo `MODULO_DESPLIEGUES=1`, que
-`preparar` deja activo en DEV y PRO):
+*Ajustes del servidor*: el botón **⚙ Ajustes** de la portada de cada entorno,
+que abre `/tareas/servidor/` (módulo `MODULO_DESPLIEGUES=1`, que `preparar`
+deja activo en DEV y PRO). Solo para el grupo global de IT
+(`KEYCLOAK_GRUPO_ADMIN_GLOBAL`, por defecto `IT`; en modo local, `is_staff`):
+el Admin de una sola app (`/Tareas/Admin`) no ve el botón y la página no le
+abre. La portada es estática y pregunta a `/tareas/servidor/acceso/` si quien
+mira es IT; la página lo vuelve a comprobar en el servidor.
+
+Hay una tarjeta por app del servidor:
+
+- **Tareas** (el repositorio de *Conexión con GitHub*, `despliegue.yml` y sus
+  releases).
+- Las creadas con *Crear una aplicación nueva* (`apps.yml` de este repositorio).
+- Las de otro repositorio, dadas de alta con *Añadir una app que ya existe*:
+  su ruta en la portada, `usuario/repo`, el fichero del workflow, su rama y
+  los nombres de sus campos de `workflow_dispatch` para el entorno (`dev`/`pro`)
+  y la versión. El panel lanza ese workflow tal cual: no se toca la app.
 
 | Qué quieres | Qué pulsas |
 |---|---|
-| Ver qué versión tiene cada entorno | Las tarjetas de arriba (punto verde = responde) |
+| Ver qué versión tiene cada app | Su tarjeta (punto verde = responde) |
 | Probar un cambio | Nada: cada cambio en `main` llega solo a DEV |
-| Sacar una versión y ponerla en PRO | *Pasar a PRO lo que hay en DEV* → tipo (arreglos, funciones nuevas, cambios grandes) → **Pasar a PRO**: el panel aprueba solo el paso a PRO en cuanto la versión está construida |
-| Elegir tú cuándo entra en PRO | Igual, sin la casilla *Ponerla en PRO sola*; luego aviso amarillo *espera aprobación para PRO* → **Aprobar** |
-| Volver atrás | *↩ Volver a la anterior* en la tarjeta del entorno |
-| Poner una versión concreta | Escribirla (o elegirla de la lista) en la tarjeta → *Poner* |
-| Ver si algo falló | *Últimas ejecuciones* → *detalle* |
-| Crear otra aplicación | *Otras aplicaciones → Crear una aplicación* |
-| Versión de otra aplicación | Su fila en *Otras aplicaciones* → *Poner* o *↩* |
+| Pasar a PRO | **Pasar a PRO** en la tarjeta. Tareas saca una versión nueva (arreglos, funciones nuevas o cambios grandes); el resto pone en PRO la versión que dice su DEV. Si el workflow pide aprobación para `pro`, el panel la aprueba solo |
+| Aprobar a mano | Aviso amarillo *espera aprobación para PRO* → **Aprobar** |
+| Volver atrás | *↩ Anterior* en el entorno de la tarjeta (en las apps de otro repositorio, solo si su workflow entiende `anterior`) |
+| Poner una versión concreta | Escribirla en el entorno de la tarjeta → *Poner* |
+| Ver si algo falló | *Últimas ejecuciones y versiones* (Tareas) o *Últimas peticiones* → *detalle* |
 | Dominio propio para una app de PRO | *Llevar una app de PRO a su dominio* |
+
+Con cada versión que llega a PRO, el servidor se queda con el `tareas.sh` que
+trae la imagen (el de antes queda en `tareas.sh.anterior`) y rehace la portada:
+las mejoras del servidor llegan solas, sin entrar a copiarlo.
 
 El panel no despliega por sí mismo: le pide a GitHub que lance el workflow, así
 que todo queda registrado en *Actions* igual que si se hiciera allí. Si PRO no

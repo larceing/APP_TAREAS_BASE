@@ -45,12 +45,12 @@ def procesar_login(
 ):
     next_url = _next_seguro(next)
     try:
-        usuario, es_it = auth.verificar_credenciales(username, password)
+        usuario, es_it, admin_global = auth.verificar_credenciales(username, password)
     except auth.SinAccesoApp:
         return templates.TemplateResponse(request, "login.html", {"error": False, "sin_acceso": True, "next": next_url})
     if not usuario:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url})
-    auth.iniciar_sesion(request, usuario, es_it)
+    auth.iniciar_sesion(request, usuario, es_it, admin_global)
     return RedirectResponse(url=next_url, status_code=303)
 
 
@@ -62,12 +62,12 @@ def volver_de_sso(request: Request, code: str = "", state: str = "", error: str 
     if error or not esperado or not secrets.compare_digest(state, esperado):
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True})
     try:
-        usuario, es_it, id_token = auth.sso_completar(code, request.headers.get("host", ""))
+        usuario, es_it, admin_global, id_token = auth.sso_completar(code, request.headers.get("host", ""))
     except auth.SinAccesoApp:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True, "sin_acceso": True})
     if not usuario:
         return templates.TemplateResponse(request, "login.html", {"error": True, "next": next_url, "sso_fallo": True})
-    auth.iniciar_sesion(request, usuario, es_it)
+    auth.iniciar_sesion(request, usuario, es_it, admin_global)
     if id_token:
         request.session["sso_id_token"] = id_token
     return RedirectResponse(url=next_url, status_code=303)

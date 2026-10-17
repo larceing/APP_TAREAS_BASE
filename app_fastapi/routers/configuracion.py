@@ -80,6 +80,8 @@ def ver_configuracion(request: Request, tipo: str = "empresas", usuario: str = D
     tab_activo = tipo if tipo in ("empresas", *TITULOS_TAB) else "empresas"
     if tab_activo in _MODULO_DE_TAB and not config.modulo_activo(_MODULO_DE_TAB[tab_activo]):
         tab_activo = "empresas"  # pestaña de un modulo apagado (ver config.py)
+    if tab_activo == "despliegues":  # ahora es la pagina Ajustes del servidor (boton de la portada)
+        return RedirectResponse(url="/servidor/", status_code=303)
     conteos = db.get_conteos_pendientes()
     conteos["sistema"] = db.count_backups()  # el nav llama "sistema" a la pestana de Backups
     conteos["api"] = len(db.load_api_tokens())
@@ -112,9 +114,6 @@ def ver_configuracion(request: Request, tipo: str = "empresas", usuario: str = D
         except (ValueError, TypeError):
             ctx["mantis_usuario_map"] = {}
         ctx["usuarios"] = db.load_usuarios()
-    if tab_activo == "despliegues":
-        from .. import despliegues
-        ctx["despliegue"] = despliegues.panel()
     if tab_activo == "nexus":
         ctx["nexus_acceso"] = db.get_ajuste("nexus.acceso", "it")
     if tab_activo == "api":

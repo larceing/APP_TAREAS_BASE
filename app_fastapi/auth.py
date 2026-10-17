@@ -63,8 +63,7 @@ def acceso_por_grupos(grupos) -> tuple[bool, bool]:
     Sin KEYCLOAK_GRUPO_APP entra cualquiera del realm y solo el admin global
     administra (lo de siempre)."""
     nombres = {g.strip().strip("/") for g in (grupos or []) if isinstance(g, str)}
-    admin_global = os.getenv("KEYCLOAK_GRUPO_ADMIN_GLOBAL", "IT").strip().strip("/")
-    es_global = bool(admin_global) and admin_global in nombres
+    es_global = es_admin_global(nombres)
     app = os.getenv("KEYCLOAK_GRUPO_APP", "").strip().strip("/")
     if not app:
         return True, es_global
@@ -72,9 +71,18 @@ def acceso_por_grupos(grupos) -> tuple[bool, bool]:
     return es_global or en_app, es_global or f"{app}/Admin" in nombres
 
 
+def es_admin_global(grupos) -> bool:
+    """De KEYCLOAK_GRUPO_ADMIN_GLOBAL (por defecto IT): administra el servidor
+    entero (el panel de Ajustes de la portada, con todas las apps). Ser Admin
+    de una sola app (/Tareas/Admin) no basta."""
+    nombres = {g.strip().strip("/") for g in (grupos or []) if isinstance(g, str)}
+    admin_global = os.getenv("KEYCLOAK_GRUPO_ADMIN_GLOBAL", "IT").strip().strip("/")
+    return bool(admin_global) and admin_global in nombres
+
+
 def _verificar_keycloak(username: str, password: str):
-    """(None, False) si Keycloak rechaza las credenciales (o no responde), o
-    (username canónico, es_it) si son correctas. "es_it" viene del grupo de
+    """(None, False, False) si Keycloak rechaza las credenciales (o no
+    responde), o (username canónico, es_it, admin_global) si son correctas. "es_it" viene del grupo de
     Keycloak "IT" (claim "groups" del userinfo, vía un protocol mapper en el
     cliente) -- deliberadamente NO se guarda en nuestra base de datos, solo
     en la sesion (ver iniciar_sesion): gestionar quien es de IT es cosa
@@ -88,7 +96,7 @@ def _verificar_keycloak(username: str, password: str):
     modulo (el orden de imports en tests.py, por ejemplo, no lo garantiza)."""
     issuer = os.getenv("KEYCLOAK_ISSUER")
     if not issuer:
-        return None, False
+        return None, False, False
     try:
         token_resp = requests.post(
             f"{issuer}/protocol/openid-connect/token",
@@ -106,18 +114,18 @@ def _verificar_keycloak(username: str, password: str):
             timeout=5,
         )
     except requests.RequestException:
-        return None, False
+        return None, False, False
     if token_resp.status_code != 200:
-        return None, False
+        return None, False, False
     try:
         access_token = token_resp.json()["access_token"]
     except (ValueError, KeyError):
-        return None, False
+        return None, False, False
     return _usuario_de_keycloak(issuer, access_token)
 
 
 def _usuario_de_keycloak(issuer: str, access_token: str):
-    """(username, es_it) a partir del access token, via /userinfo -- comun al
+    """(username, es_it, admin_global) a partir del access token, via /userinfo -- comun al
     modo keycloak (formulario propio) y al modo sso (pantalla de Keycloak)."""
     try:
         userinfo_resp = requests.get(
@@ -126,14 +134,14 @@ def _usuario_de_keycloak(issuer: str, access_token: str):
             timeout=5,
         )
     except requests.RequestException:
-        return None, False
+        return None, False, False
     if userinfo_resp.status_code != 200:
-        return None, False
+        return None, False, False
     datos = userinfo_resp.json()
     puede, es_it = acceso_por_grupos(datos.get("groups"))
     if not puede:
         raise SinAccesoApp(datos.get("preferred_username"))
-    return datos.get("preferred_username"), es_it
+    return datos.get("preferred_username"), es_it, es_admin_global(datos.get("groups"))
 
 
 # ── modo sso: inicio de sesion unico en la pantalla de Keycloak ───────────
@@ -173,13 +181,13 @@ def sso_url_login(state: str, host: str = "") -> str:
 
 
 def sso_completar(code: str, host: str = ""):
-    """(None, False, "") si Keycloak no acepta el code; (username, es_it,
-    id_token) si si. El id_token se guarda en la sesion para cerrar la de
+    """(None, False, False, "") si Keycloak no acepta el code; (username,
+    es_it, admin_global, id_token) si si. El id_token se guarda en la sesion para cerrar la de
     Keycloak sin pantalla de confirmar. Igual que verificar_credenciales, da
     de alta la fila de auth_user."""
     issuer = os.getenv("KEYCLOAK_ISSUER")
     if not issuer or not code:
-        return None, False, ""
+        return None, False, False, ""
     try:
         token_resp = requests.post(
             f"{issuer}/protocol/openid-connect/token",
@@ -195,13 +203,13 @@ def sso_completar(code: str, host: str = ""):
         access_token = datos["access_token"] if datos else None
         id_token = datos.get("id_token") or ""
     except (requests.RequestException, ValueError, KeyError, AttributeError):
-        return None, False, ""
+        return None, False, False, ""
     if not access_token:
-        return None, False, ""
-    usuario, es_it = _usuario_de_keycloak(issuer, access_token)
+        return None, False, False, ""
+    usuario, es_it, admin_global = _usuario_de_keycloak(issuer, access_token)
     if usuario:
         _asegurar_auth_user(usuario)
-    return usuario, es_it, (id_token if isinstance(id_token, str) else "")
+    return usuario, es_it, admin_global, (id_token if isinstance(id_token, str) else "")
 
 
 def sso_url_logout(id_token: str = "", host: str = "") -> str:
@@ -279,25 +287,26 @@ def _verificar_local(username: str, password: str):
     finally:
         conn.close()
     if not fila or not fila[3] or not _verificar_pbkdf2_sha256(password, fila[1] or ""):
-        return None, False
-    return fila[0], bool(fila[2])
+        return None, False, False
+    return fila[0], bool(fila[2]), bool(fila[2])  # en local, is_staff administra todo
 
 
 def verificar_credenciales(username: str, password: str):
-    """(None, False) si son invalidas, o (username canónico, es_it) si son
-    correctas -- usado por routers/login.py al procesar el formulario."""
+    """(None, False, False) si son invalidas, o (username canónico, es_it,
+    admin_global) si son correctas -- usado por routers/login.py."""
     if config.auth_modo() == "local":
         return _verificar_local(username.strip(), password)
-    validado, es_it = _verificar_keycloak(username, password)
+    validado, es_it, admin_global = _verificar_keycloak(username, password)
     if not validado:
-        return None, False
+        return None, False, False
     _asegurar_auth_user(validado)
-    return validado, es_it
+    return validado, es_it, admin_global
 
 
-def iniciar_sesion(request: Request, username: str, es_it: bool = False) -> None:
+def iniciar_sesion(request: Request, username: str, es_it: bool = False, admin_global: bool = False) -> None:
     request.session["usuario"] = username
     request.session["es_it"] = es_it
+    request.session["admin_global"] = bool(admin_global)
     # con Keycloak, IT lo dice el grupo de cada login: se apunta en auth_user
     # para que los permisos de los espacios (db.puede_actuar_en_proyecto) lo
     # vean. En local is_staff ya es el origen de es_it, asi que no cambia nada.
@@ -324,5 +333,24 @@ def requiere_it(request: Request, usuario: str = Depends(requiere_login)) -> str
     entero: ser Admin de un espacio no da acceso a la configuracion global
     de la app, son dos privilegios sin relacion."""
     if not request.session.get("es_it"):
+        raise NoEsIT()
+    return usuario
+
+
+def es_admin_global_sesion(request: Request) -> bool:
+    """IT de todo el servidor (ver es_admin_global). Una sesion de antes de
+    que existiera la marca solo cuenta si la app no tiene grupo propio (ahi
+    IT de la app y admin global eran lo mismo)."""
+    if not request.session.get("usuario"):
+        return False
+    marca = request.session.get("admin_global")
+    if marca is None:
+        return bool(request.session.get("es_it")) and not os.getenv("KEYCLOAK_GRUPO_APP", "").strip()
+    return bool(marca)
+
+
+def requiere_admin_global(request: Request, usuario: str = Depends(requiere_login)) -> str:
+    """Para el panel de Ajustes del servidor (todas las apps): solo IT global."""
+    if not es_admin_global_sesion(request):
         raise NoEsIT()
     return usuario

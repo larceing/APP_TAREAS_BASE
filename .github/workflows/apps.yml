@@ -1,6 +1,6 @@
 # Otras apps del servidor (no Tareas): crearlas en DEV y PRO, ponerles una
 # versión, volver atrás y llevar una app de PRO a su propio dominio. Lo lanza
-# el panel Configuración -> Despliegues de la app (o "Run workflow" aquí).
+# el panel Ajustes del servidor (portada -> Ajustes) o "Run workflow" aquí.
 # El servidor hace el trabajo (tareas.sh, con la misma clave SSH limitada que
 # despliegue.yml) y su respuesta queda en el resumen de la ejecución.
 name: Apps
