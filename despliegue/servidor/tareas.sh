@@ -57,7 +57,9 @@ var() { grep -E "^$2=" "$1" 2>/dev/null | tail -n1 | cut -d= -f2- || true; }
 
 poner_var() {   # poner_var FICHERO CLAVE VALOR
   if grep -qE "^$2=" "$1"; then
-    sed -i "s|^$2=.*|$2=$3|" "$1"
+    # el valor sin interpretar por sed: escapa la barra invertida, & y el separador |
+    local v=${3//\\/\\\\}; v=${v//&/\\&}; v=${v//|/\\|}
+    sed -i "s|^$2=.*|$2=$v|" "$1"
   else
     echo "$2=$3" >> "$1"
   fi
@@ -418,8 +420,11 @@ cmd_copia() {
     log "la base $bd aún no existe: sin copia"
     return 0
   fi
-  (umask 077; docker exec -e MYSQL_PWD="$(bd_root)" tareas-bd \
-     mariadb-dump -uroot --single-transaction --routines --triggers "$bd" | gzip > "$fichero")
+  if ! (umask 077; docker exec -e MYSQL_PWD="$(bd_root)" tareas-bd \
+     mariadb-dump -uroot --single-transaction --routines --triggers "$bd" | gzip > "$fichero"); then
+    rm -f "$fichero"
+    die "la copia de $bd ha fallado (no se deja a medias)"
+  fi
   log "copia: $fichero"
   # solo las COPIAS_A_GUARDAR mas recientes
   ls -1t "$DIR/copias/$ent"/*.sql.gz 2>/dev/null | tail -n +$((COPIAS_A_GUARDAR + 1)) | xargs -r rm -f || true

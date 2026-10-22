@@ -75,4 +75,6 @@ def reflejar_cookie(request: Request, response: Response) -> None:
     (un POST cross-site)."""
     token = request.session.get(CSRF_SESSION_KEY)
     if token:
-        response.set_cookie(CSRF_COOKIE_NAME, token, samesite="lax")
+        # Secure cuando la peticion llega por HTTPS (directa o tras la entrada).
+        https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+        response.set_cookie(CSRF_COOKIE_NAME, token, samesite="lax", secure=https)
