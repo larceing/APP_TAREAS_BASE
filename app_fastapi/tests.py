@@ -2540,3 +2540,29 @@ class AccesoPorGruposTests(unittest.TestCase):
             self.assertEqual(auth.acceso_por_grupos(["/Tareas/Admin"]), (True, True))
             self.assertEqual(auth.acceso_por_grupos(["/IT"]), (True, True))
             self.assertEqual(auth.acceso_por_grupos(["/TareasOtra"]), (False, False))
+
+
+class SubidaTopeTests(unittest.IsolatedAsyncioTestCase):
+    """Un documento por encima de MAX_SUBIDA_MB no se guarda (se deja de leer al pasarse)."""
+
+    async def test_tope_de_subida(self):
+        import io
+        from fastapi import UploadFile
+        from .routers import tablero
+        with patch.dict(os.environ, {"MAX_SUBIDA_MB": "1"}):
+            grande = UploadFile(io.BytesIO(b"x" * (1024 * 1024 + 1)), filename="a.bin")
+            self.assertIsNone(await tablero._leer_con_tope(grande))
+            justo = UploadFile(io.BytesIO(b"x" * (1024 * 1024)), filename="b.bin")
+            self.assertEqual(len(await tablero._leer_con_tope(justo)), 1024 * 1024)
+        with patch.dict(os.environ, {"MAX_SUBIDA_MB": "nada"}):
+            self.assertEqual(tablero.max_subida_bytes(), 25 * 1024 * 1024)
+
+
+class UserinfoNoJsonTests(unittest.TestCase):
+    """Si /userinfo no devuelve JSON (una página de error del proxy), no entra nadie ni hay 500."""
+
+    def test_userinfo_no_json(self):
+        resp = Mock(status_code=200)
+        resp.json.side_effect = ValueError("no es JSON")
+        with patch.object(auth.requests, "get", return_value=resp):
+            self.assertEqual(auth._usuario_de_keycloak("https://kc/realms/x", "tok"), (None, False, False))

@@ -25,6 +25,7 @@ Indice: GET /api/  (quien soy + lista de endpoints).
 import hashlib
 import json
 import os
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -69,7 +70,7 @@ def _resolver_api_token(request: Request):
     if not clave:
         return None
     maestra = os.getenv("API_IMPORT_TOKEN", "").strip()
-    if maestra and clave == maestra:
+    if maestra and secrets.compare_digest(clave.encode(), maestra.encode()):
         return {"proyecto_id": None, "token_id": None, "nombre": "clave maestra", "user_id": None}
     token = db.find_api_token_by_hash(hashlib.sha256(clave.encode()).hexdigest())
     if not token:

@@ -74,6 +74,22 @@ from ..templating import templates
 router = APIRouter(tags=["tablero"])
 
 ESTADOS_PROYECTO = ["Activo", "En pausa", "Cerrado"]
+
+
+def max_subida_bytes() -> int:
+    """Tope de un documento subido (MAX_SUBIDA_MB, 25 por defecto)."""
+    try:
+        mb = float(os.getenv("MAX_SUBIDA_MB", "") or 25)
+    except ValueError:
+        mb = 25
+    return int(max(mb, 1) * 1024 * 1024)
+
+
+async def _leer_con_tope(file: UploadFile):
+    """El contenido, o None si pasa de max_subida_bytes() (se deja de leer al pasarse)."""
+    tope = max_subida_bytes()
+    data = await file.read(tope + 1)
+    return None if len(data) > tope else data
 TIPOS_PROYECTO = ["kanban", "scrum"]
 PRIORITIES = ["Normal", "Alta", "Baja"]
 # Lista fija que usa Resumen/Dashboard para las tarjetas de metricas y las
@@ -500,7 +516,10 @@ async def doc_upload(request: Request, project_id: str, file: UploadFile = File(
     if file.filename:
         ext = Path(file.filename).suffix
         filename = str(uuid.uuid4()) + ext
-        data = await file.read()
+        data = await _leer_con_tope(file)
+        if data is None:
+            flash(request, "error", f"El documento pesa más de {max_subida_bytes() // (1024 * 1024)} MB.")
+            return RedirectResponse(url=f"/proyecto/{project_id}/documentos/", status_code=303)
         (db.media_dir() / filename).write_bytes(data)
         db.crear_documento(project_id, "", file.filename, filename, len(data), usuario)
     return RedirectResponse(url=f"/proyecto/{project_id}/documentos/", status_code=303)
@@ -588,7 +607,9 @@ async def task_doc_upload(task_id: str, file: UploadFile = File(...), usuario: s
         return RedirectResponse(url=f"/proyecto/{proyecto_id}/tablero/?abrir_tarea={task_id}", status_code=303)
     ext = Path(file.filename).suffix
     filename = str(uuid.uuid4()) + ext
-    data = await file.read()
+    data = await _leer_con_tope(file)
+    if data is None:
+        return RedirectResponse(url=f"/proyecto/{proyecto_id}/tablero/?abrir_tarea={task_id}", status_code=303)
     (db.media_dir() / filename).write_bytes(data)
     db.crear_documento(proyecto_id, task_id, file.filename, filename, len(data), usuario)
     return RedirectResponse(url=f"/proyecto/{proyecto_id}/tablero/?abrir_tarea={task_id}", status_code=303)

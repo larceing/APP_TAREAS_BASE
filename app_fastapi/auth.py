@@ -150,7 +150,12 @@ def _usuario_de_keycloak(issuer: str, access_token: str):
         return None, False, False
     if userinfo_resp.status_code != 200:
         return None, False, False
-    datos = userinfo_resp.json()
+    try:
+        datos = userinfo_resp.json()
+    except ValueError:
+        return None, False, False
+    if not isinstance(datos, dict):
+        return None, False, False
     puede, es_it = acceso_por_grupos(datos.get("groups"))
     if not puede:
         raise SinAccesoApp(datos.get("preferred_username"), datos.get("groups"))
